@@ -137,3 +137,10 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Replit files to ignore
+.replit
+.config/
+
+# Common system files
+.DS_Store
