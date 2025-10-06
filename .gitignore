@@ -138,9 +138,12 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# Replit files to ignore
+# Replit and hidden files to ignore
 .replit
 .config/
+.git/
 
 # Common system files
 .DS_Store
+Thumbs.db
+
