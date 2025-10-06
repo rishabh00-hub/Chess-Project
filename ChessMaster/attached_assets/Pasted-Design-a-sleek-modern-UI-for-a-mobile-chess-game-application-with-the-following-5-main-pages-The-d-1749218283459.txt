@@ -1,0 +1,85 @@
+Design a sleek, modern UI for a mobile chess game application with the following 5 main pages. The design should be clean, engaging, and optimized for user interaction. Include a bottom navigation bar with text labels and icons for quick access to the five main sections.
+
+---
+
+### 1. Home Page
+
+* Top Section: App logo, username, user avatar, current level, and XP bar.
+* Middle Section:
+
+  * Recent Activity Panel: Show last 3–5 match results with timestamps and outcomes (win/lose/draw/resume).
+  * Match History Button: Opens detailed list of past games.
+* Lower Section:
+
+  * Updates Panel: App or feature updates.
+  * Referral System: Invite friends UI, referral codes, and rewards.
+  * Task System: Daily/weekly tasks with progress bars and claim buttons.
+
+---
+
+### 2. Leaderboard Page
+
+* Top: Logo + “Global Rankings” title.
+* Middle Section (Main Display):
+
+  * Stylish leaderboard table layout:
+
+    * 3 Rows:
+
+      * Header: Rank, Username, Level, Total Points.
+      * Data: Multiple player rows.
+      * User Row: Always visible row at bottom showing the current user’s rank and stats.
+    * 4 Columns: Rank | Username | Level | Total Points
+* Point System (shown on screen):
+
+  * Win/Draw: +4 points
+  * Lose/Resign: -2 points
+
+---
+
+### 3. Play Page
+
+* Top: Game mode selection carousel or segmented buttons:
+
+  * Vs AI
+  * Vs Friend (invite via link/code)
+  * Online Matchmaking
+  * Bet Matches
+* Matchmaking Interface:
+
+  * Centered animated logo (can vary based on mode).
+  * “Finding Opponent…” animation, cancel button.
+
+---
+
+### 4. Stats Page (Static)
+
+* Display static statistics with interactive graphs and charts:
+
+  * Win/Loss/Draw/Resign record (numerical + pie chart).
+  * Total Matches played.
+  * Average Game Length.
+  * Bar graph or line chart showing game result trends over time.
+
+---
+
+### 5. Tutorial Page
+
+* Chess Rules Section: Scrollable or card-based layout.
+* Strategy Tips Section: List view or collapsible tips.
+* Interactive Lessons: Include interactive board snippets for learning.
+* Icons and progress indicators for completed lessons.
+
+---
+
+### Bottom Navigation Bar
+
+Include 5 tabs with icons + text labels:
+
+* Home
+* Leaderboard
+* Play
+* Stats
+* Tutorial
+
+Use consistent visual language, smooth transitions, and responsive UI components. Design should adapt to both light and dark themes.

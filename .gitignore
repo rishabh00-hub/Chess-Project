@@ -147,3 +147,16 @@ vite.config.ts.timestamp-*
 .DS_Store
 Thumbs.db
 
+# Replit Configuration Files (Causes the untracked error)
+.replit
+.config/
+.git/
+
+# Node.js dependencies (If you are using Node/JS/React)
+node_modules/
+.npm/
+
+# Logs and other files
+*.log
+.DS_Store
+
