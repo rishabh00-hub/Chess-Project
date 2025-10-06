@@ -1,0 +1,15 @@
+{
+  "appId": "com.chessmaster.mobile",
+  "appName": "ChessMasterMobile",
+  "webDir": "client/dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "buildOptions": {
+      "keystorePath": null,
+      "keystoreAlias": null
+    }
+  }
+}
