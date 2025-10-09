@@ -15,6 +15,7 @@
     "cap:run:android": "npm run cap:sync && npx cap run android"
   },
   "dependencies": {
+    "@capacitor/android": "^7.4.3",
     "@capacitor/cli": "^7.4.3",
     "@capacitor/core": "^7.4.3",
     "@hookform/resolvers": "^3.10.0",
