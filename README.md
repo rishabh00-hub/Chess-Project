@@ -22,11 +22,12 @@ This project uses a Zoho Creator API service (`server/zoho-api-service.js`) for 
 
 **Setup Instructions:**
 1. Open `server/zoho-api-service.js`.
-2. Paste your Zoho Client ID, Client Secret, and Redirect URI into the constants at the top of the file:
-  - `ZOHO_CLIENT_ID`
-  - `ZOHO_CLIENT_SECRET`
-  - `ZOHO_REDIRECT_URI`
-3. Replace the placeholder API functions with real Zoho Creator API calls as needed.
+2. Paste your Zoho Client ID, Client Secret, and set the Redirect URI to `chessmaster://callback` in the constants at the top of the file:
+   - `ZOHO_CLIENT_ID`
+   - `ZOHO_CLIENT_SECRET`
+   - `ZOHO_REDIRECT_URI` (should be `chessmaster://callback`)
+3. All API call URLs use the new application name: `Chess Database`.
+4. Replace the placeholder API functions with real Zoho Creator API calls as needed.
 
 ## How to Build and Run the Android App
 

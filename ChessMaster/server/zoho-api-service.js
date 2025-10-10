@@ -1,12 +1,12 @@
 // zoho-api-service.js
 
 // === ZOHO CREATOR API KEYS (Paste your credentials below) ===
-const ZOHO_CLIENT_ID = "1000.W5U2PRBOGTG20P5IONSE5FCKQ14ZEJ"
-const ZOHO_CLIENT_SECRET = "f860c3e0c65c502d7419ed83484fedbc228dd9cf1e"
-const ZOHO_REDIRECT_URI = "chessmaster://callback"
+const ZOHO_CLIENT_ID = "PASTE_YOUR_CLIENT_ID_HERE";
+const ZOHO_CLIENT_SECRET = "PASTE_YOUR_CLIENT_SECRET_HERE";
+const ZOHO_REDIRECT_URI = "chessmaster://callback";
 
 // === ZOHO CREATOR API ENDPOINTS ===
-const ZOHO_BASE_URL = "https://creator.zoho.com/api/v2/Chess_Database/form";
+const ZOHO_BASE_URL = "https://creator.zoho.com/api/v2/Chess%20Database/form";
 
 // === Placeholder for OAuth2 Token Management ===
 let accessToken = null;
