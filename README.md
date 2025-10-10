@@ -11,6 +11,22 @@ ChessMaster Mobile is a modern, mobile-first chess game application built with R
 - **State Management:** TanStack Query (React Query)
 - **Routing:** Wouter (SPA navigation)
 - **Backend:** Express (optional, for API and multiplayer features)
+- **Zoho Creator API:** Integrated via placeholder service for user, match, and rank operations
+## Zoho API Integration
+
+This project uses a Zoho Creator API service (`server/zoho-api-service.js`) for backend operations:
+
+- User Registration/Login
+- Updating User Profile Data (Elo Rating, Wins, Losses, Draws)
+- Saving Match Record (to 'Match_History' form)
+
+**Setup Instructions:**
+1. Open `server/zoho-api-service.js`.
+2. Paste your Zoho Client ID, Client Secret, and Redirect URI into the constants at the top of the file:
+  - `ZOHO_CLIENT_ID`
+  - `ZOHO_CLIENT_SECRET`
+  - `ZOHO_REDIRECT_URI`
+3. Replace the placeholder API functions with real Zoho Creator API calls as needed.
 
 ## How to Build and Run the Android App
 

@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+const zohoApi = require("./zoho-api-service");
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertGameSchema, insertLessonProgressSchema } from "@shared/schema";
 import { z } from "zod";
@@ -44,11 +45,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/games', async (req: any, res) => {
     try {
       const { whitePlayerId, blackPlayerId, gameMode, aiDifficulty, betAmount } = req.body;
-      
       if (!whitePlayerId || !gameMode) {
         return res.status(400).json({ message: "Missing required fields: whitePlayerId, gameMode" });
       }
-
       const gameData = {
         whitePlayerId,
         blackPlayerId: blackPlayerId || null,
@@ -57,8 +56,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         aiDifficulty: aiDifficulty || null,
         betAmount: betAmount || 0
       };
-
-      const game = await storage.createGame(gameData);
+      const game = await zohoApi.saveMatch(gameData);
       res.json(game);
     } catch (error) {
       console.error("Error creating game:", error);
@@ -178,7 +176,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/leaderboard/rank', async (req: any, res) => {
     try {
-      res.json({ rank: 3 });
+      const userId = req.query.userId || "demo_user_123";
+      const rank = await zohoApi.getRank(userId);
+      res.json(rank);
     } catch (error) {
       console.error("Error fetching demo rank:", error);
       res.status(500).json({ message: "Failed to fetch user rank" });
