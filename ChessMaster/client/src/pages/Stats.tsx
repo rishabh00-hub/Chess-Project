@@ -6,11 +6,12 @@ import { useEffect } from "react";
 
 export default function Stats() {
   const { user, isLoading } = useAuth();
+  const zohoUser = user as import("../types").ZohoUserProfile | undefined;
   const { toast } = useToast();
 
   // Redirect to login if not authenticated
   useEffect(() => {
-    if (!isLoading && !user) {
+  if (!isLoading && !zohoUser) {
       toast({
         title: "Unauthorized",
         description: "You are logged out. Logging in again...",
@@ -23,7 +24,7 @@ export default function Stats() {
     }
   }, [user, isLoading, toast]);
 
-  if (isLoading || !user) {
+  if (isLoading || !zohoUser) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-white">Loading...</div>
@@ -32,14 +33,14 @@ export default function Stats() {
   }
 
   // Calculate statistics
-  const totalGames = user.gamesPlayed || 0;
-  const winRate = totalGames > 0 ? ((user.wins || 0) / totalGames * 100).toFixed(1) : "0.0";
+  const totalGames = zohoUser?.total_matches_played ?? 0;
+  const winRate = totalGames > 0 ? ((zohoUser?.total_wins ?? 0) / totalGames * 100).toFixed(1) : "0.0";
   
   // Calculate pie chart segments (simplified visual representation)
-  const wins = user.wins || 0;
-  const losses = user.losses || 0;
-  const draws = user.draws || 0;
-  const resignations = user.resignations || 0;
+  const wins = zohoUser?.total_wins ?? 0;
+  const losses = zohoUser?.total_losses ?? 0;
+  const draws = zohoUser?.total_draws ?? 0;
+  const resignations = 0; // Not tracked in ZohoUserProfile
   
   const winPercentage = totalGames > 0 ? (wins / totalGames) * 100 : 0;
   const lossPercentage = totalGames > 0 ? (losses / totalGames) * 100 : 0;
@@ -150,13 +151,13 @@ export default function Stats() {
               <div className="flex justify-between items-center">
                 <span className="text-slate-300">Current Streak</span>
                 <span className="font-semibold text-yellow-400">
-                  {user.currentStreak} {user.currentStreak === 1 ? 'Game' : 'Games'}
+                  N/A
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-300">Best Streak</span>
                 <span className="font-semibold text-blue-400">
-                  {user.bestStreak} {user.bestStreak === 1 ? 'Game' : 'Games'}
+                  N/A
                 </span>
               </div>
             </div>

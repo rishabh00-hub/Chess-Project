@@ -21,6 +21,16 @@ import AnimatedCounter from "@/components/AnimatedCounter";
 import NotificationBanner from "@/components/NotificationBanner";
 
 export default function Home() {
+  // Initiate Zoho OAuth2 login redirect
+  const handleZohoLogin = () => {
+    // Construct Zoho OAuth2 URL
+    const clientId = "1000.W5U2PRBOGTG20P5IONSE5FCKQ14ZEJ";
+    const redirectUri = encodeURIComponent("chessmaster://callback");
+    const scope = encodeURIComponent("ZohoCreator.user.CREATE ZohoCreator.user.READ");
+    const responseType = "code";
+    const authUrl = `https://accounts.zoho.com/oauth/v2/auth?scope=${scope}&client_id=${clientId}&response_type=${responseType}&access_type=offline&redirect_uri=${redirectUri}`;
+    window.location.href = authUrl;
+  };
   const { user, isLoading } = useAuth();
   const { toast } = useToast();
 
@@ -33,23 +43,12 @@ export default function Home() {
     queryKey: ["/api/leaderboard/rank"],
     retry: false,
   });
+      // Type assertion for ZohoUserProfile
+      const zohoUser = user as import("../types").ZohoUserProfile | undefined;
 
   // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!isLoading && !user) {
-      toast({
-        title: "Unauthorized",
-        description: "You are logged out. Logging in again...",
-        variant: "destructive",
-      });
-      setTimeout(() => {
-        window.location.href = "/api/login";
-      }, 500);
-      return;
-    }
-  }, [user, isLoading, toast]);
-
-  if (isLoading || !user) {
+  // Show Zoho Sign In/Sign Up button if not authenticated
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-white">Loading...</div>
@@ -57,8 +56,33 @@ export default function Home() {
     );
   }
 
-  const xpProgress = ((user.xp % 1000) / 1000) * 100;
-  const nextLevelXp = (Math.floor(user.xp / 1000) + 1) * 1000;
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4">
+        <Card className="w-full max-w-md bg-slate-800 border-slate-700">
+          <CardContent className="pt-6 text-center">
+            <div className="w-20 h-20 bg-yellow-400 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <Crown className="text-slate-900 text-3xl" size={32} />
+            </div>
+            <h1 className="text-3xl font-bold text-white mb-2">ChessFlow</h1>
+            <p className="text-slate-400 mb-8">
+              Sign in or sign up to track your progress, play matches, and join leaderboards!
+            </p>
+            <Button 
+              onClick={handleZohoLogin}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white text-lg py-3"
+            >
+              Sign In / Sign Up (Via Zoho)
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+      // XP and level logic (replace with elo_rating for Zoho)
+      const xpProgress = ((zohoUser?.elo_rating ?? 0) % 1000) / 1000 * 100;
+      const nextLevelXp = (Math.floor((zohoUser?.elo_rating ?? 0) / 1000) + 1) * 1000;
 
   const handleLogout = () => {
     window.location.href = "/api/logout";
@@ -74,17 +98,7 @@ export default function Home() {
 
   return (
     <div className="pb-20">
-      {/* Achievement Notification */}
-      {user.currentStreak >= 3 && (
-        <div className="px-4 pt-4">
-          <NotificationBanner
-            type="achievement"
-            title="Hot Streak!"
-            message={`You're on a ${user.currentStreak} game winning streak! Keep it up!`}
-            autoHide={false}
-          />
-        </div>
-      )}
+      {/* No achievement notification: currentStreak not in ZohoUserProfile */}
 
       {/* Top Section */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 pt-12 pb-6">
@@ -95,22 +109,15 @@ export default function Home() {
             </div>
             <div>
               <h1 className="text-xl font-bold">ChessFlow</h1>
-              <p className="text-blue-100 text-sm">@{user.email?.split('@')[0] || 'player'}</p>
+                  <p className="text-blue-100 text-sm">@{zohoUser?.email?.split('@')[0] || 'player'}</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 p-0.5 hover:scale-105 transition-transform">
-              {user.profileImageUrl ? (
-                <img 
-                  src={user.profileImageUrl} 
-                  alt="Avatar" 
-                  className="w-full h-full rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full rounded-full bg-emerald-500 flex items-center justify-center text-white font-bold">
-                  {user.firstName?.[0] || user.email?.[0]?.toUpperCase() || 'P'}
-                </div>
-              )}
+                  {/* No profileImageUrl in ZohoUserProfile, fallback to initials */}
+                  <div className="w-full h-full rounded-full bg-emerald-500 flex items-center justify-center text-white font-bold">
+                    {zohoUser?.username?.[0]?.toUpperCase() || zohoUser?.email?.[0]?.toUpperCase() || 'P'}
+                  </div>
             </div>
             <Button 
               variant="ghost" 
@@ -126,24 +133,26 @@ export default function Home() {
         {/* Level and XP Bar */}
         <div className="bg-black/20 rounded-xl p-4 backdrop-blur-sm">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Level {user.level}</span>
+                <span className="text-sm font-medium">Elo {zohoUser?.elo_rating ?? 1200}</span>
             <span className="text-sm text-blue-100">
-              <AnimatedCounter target={user.xp} duration={1500} />
-              {" / "}{nextLevelXp} XP
+                  <AnimatedCounter target={zohoUser?.elo_rating ?? 1200} duration={1500} />
+                  {" / "}{nextLevelXp} Elo
             </span>
           </div>
           <Progress value={xpProgress} className="h-3 progress-glow" />
           <div className="flex items-center justify-between mt-2 text-xs text-blue-200">
             <span>
-              <AnimatedCounter 
-                target={user.totalPoints} 
-                duration={2000} 
-                suffix=" Total Points"
+                  <AnimatedCounter 
+                    target={
+                      (zohoUser?.total_wins ?? 0) * 4 + (zohoUser?.total_draws ?? 0) * 4 - (zohoUser?.total_losses ?? 0) * 2
+                    }
+                    duration={2000}
+                    suffix=" Total Points"
               />
             </span>
             <span className="flex items-center space-x-1">
               <Zap size={12} />
-              <span>Rank #{userRankData?.rank || 3}</span>
+              <span>Rank #{(userRankData as any)?.rank ?? 3}</span>
             </span>
           </div>
         </div>
@@ -159,15 +168,15 @@ export default function Home() {
         </div>
         
         <div className="space-y-3">
-          {recentGames.length === 0 ? (
+          {(recentGames as any[]).length === 0 ? (
             <Card className="bg-slate-800 border-slate-700">
               <CardContent className="p-4 text-center">
                 <p className="text-slate-400">No recent games yet. Start playing!</p>
               </CardContent>
             </Card>
           ) : (
-            recentGames.map((game: any, index: number) => {
-              const isWin = game.winnerId === user.id;
+            (recentGames as any[]).map((game: any, index: number) => {
+                  const isWin = game.winnerId === zohoUser?.zoho_record_id;
               const isDraw = game.result === 'draw';
               const isLoss = !isWin && !isDraw;
               

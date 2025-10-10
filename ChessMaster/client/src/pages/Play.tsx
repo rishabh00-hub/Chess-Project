@@ -22,6 +22,7 @@ type GameMode = 'ai' | 'friend' | 'online' | 'bet';
 
 export default function Play() {
   const { user, isLoading } = useAuth();
+  const zohoUser = user as import("../types").ZohoUserProfile | undefined;
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [isMatchmaking, setIsMatchmaking] = useState(false);
@@ -70,7 +71,7 @@ export default function Play() {
 
   // Redirect to login if not authenticated
   useEffect(() => {
-    if (!isLoading && !user) {
+  if (!isLoading && !zohoUser) {
       toast({
         title: "Unauthorized",
         description: "You are logged out. Logging in again...",
@@ -83,7 +84,7 @@ export default function Play() {
     }
   }, [user, isLoading, toast]);
 
-  if (isLoading || !user) {
+  if (isLoading || !zohoUser) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-white">Loading...</div>
