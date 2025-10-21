@@ -1,10 +1,10 @@
 // zoho-api-service.js
 
-// === ZOHO CREATOR API KEYS (Paste your credentials below) ===
-const ZOHO_CLIENT_ID = "paste_your_client_id_here";
-const ZOHO_CLIENT_SECRET = "paste_your_client_secret_here";
+// === ZOHO CREATOR API KEYS (Read from environment variables) ===
+const ZOHO_CLIENT_ID = process.env.ZOHO_CLIENT_ID;
+const ZOHO_CLIENT_SECRET = process.env.ZOHO_CLIENT_SECRET;
 // For self-client (Android) we will use the app callback; token exchange will use the dummy redirect
-const ZOHO_REDIRECT_URI = "http://127.0.0.1:8000";
+const ZOHO_REDIRECT_URI = process.env.ZOHO_REDIRECT_URI || "http://127.0.0.1:8000";
 
 // === ZOHO CREATOR API ENDPOINTS (India DC) ===
 const ZOHO_BASE_URL = "https://creator.zoho.in/api/v2/Chess%20Database/form";
@@ -126,8 +126,24 @@ async function makeZohoApiRequest(urlPath, method = 'GET', data = null) {
   return res.text();
 }
 
+// Try to initialize accessToken on module load using stored refresh token.
+// This runs in the background and will not block module consumers.
+(async () => {
+  try {
+    if (!ZOHO_CLIENT_ID || !ZOHO_CLIENT_SECRET) {
+      console.warn('Zoho client id/secret not set in environment; skipping startup token refresh.');
+      return;
+    }
+    await refreshAccessToken();
+    console.info('Zoho access token initialized from stored refresh token.');
+  } catch (err) {
+    // Do not throw on startup — application should still boot; log for visibility
+    console.warn('Zoho token refresh on startup failed:', err && err.message ? err.message : err);
+  }
+})();
+
 // === API Functions ===
-module.exports = {
+const exported = {
   // User Registration/Login
   // authCode is the authorization code returned by Zoho OAuth flow
   async loginOrRegister(authCode) {
@@ -162,3 +178,5 @@ module.exports = {
     return { success: true, rank: record.data?.rank ?? null, userId };
   }
 };
+
+export default exported;
