@@ -42,6 +42,30 @@ This project uses a Zoho Creator API service (`server/zoho-api-service.js`) for 
   cd ChessMaster
   npm install
   ```
+
+  ## Final Authorization & Setup
+
+  Follow these steps to perform the final Zoho Creator OAuth 2.0 authorization (India DC) and persist the refresh token for long-term access.
+
+  1. Get Credentials
+    - Open the Zoho Developer Console and copy your **Client ID** and **Client Secret** for the application (IN Data Center).
+    - Open the repository root `.env` file and paste them into `ZOHO_CLIENT_ID` and `ZOHO_CLIENT_SECRET`.
+
+  2. Generate Grant Code
+    - Using the Zoho Developer Console or OAuth playground, generate a new **Authorization Code (Grant Token)** with the required scopes (for example: `ZohoCreator.data.ALL`).
+    - Copy the generated authorization code to your clipboard.
+
+  3. Final Run
+    - Run the setup script to exchange the grant token for a refresh token and persist it securely:
+
+  ```bash
+  node setup.js [PASTE_GRANT_CODE_HERE]
+  ```
+
+  If successful, the refresh token will be stored by the application's `SecureStorage` implementation and the module will be able to refresh access tokens automatically.
+
+  Security note: Do not commit your `.env` file or any tokens/credentials to source control. Use a secrets manager for production.
+
 2. **Build the web app:**
   ```bash
   npm run build
