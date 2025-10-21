@@ -1,0 +1,9 @@
+{
+  "name": "chess-project-root",
+  "version": "1.0.0",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "start-client": "serve -s ChessMaster/client/dist -p 38793"
+  }
+}
