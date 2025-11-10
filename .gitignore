@@ -160,3 +160,9 @@ node_modules/
 *.log
 .DS_Store
 
+
+# Secure storage
+.secure-storage/
+
+# Backup files
+*.bak
