@@ -1,43 +1,114 @@
-import type { Express } from "express";
-import { createServer, type Server } from "http";
-import { storage } from "./storage";
-const zohoApi = require("./zoho-api-service");
-import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertGameSchema, insertLessonProgressSchema } from "@shared/schema";
-import { z } from "zod";
+import express from 'express';
+import type { Express } from 'express';
+import { createServer } from 'node:http';
+import type { Server } from 'node:http';
+import { storage } from './storage.js';
+import { insertGameSchema, insertLessonProgressSchema } from '../shared/schema.js';
+import { z } from 'zod';
+import zohoApi from './zoho-api-service.js';
+
+// Demo user helper function
+function getDemoUser() {
+  return {
+    id: "demo_user_123",
+    email: "player@chess.com",
+    firstName: "Chess",
+    lastName: "Master",
+    profileImageUrl: null,
+    level: 8,
+    xp: 7250,
+    totalPoints: 1420,
+    gamesPlayed: 156,
+    wins: 89,
+    losses: 42,
+    draws: 18,
+    resignations: 7,
+    currentStreak: 5,
+    bestStreak: 12,
+    tutorialProgress: 75,
+    createdAt: new Date('2024-01-15'),
+    updatedAt: new Date()
+  };
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Temporarily disable auth for UI demonstration
   // await setupAuth(app);
 
-  // Demo auth route for UI showcase
+  // Zoho initialization route - use this to store your refresh token
+  app.post('/api/zoho/init', express.json(), async (req, res) => {
+    try {
+      const { authCode } = req.body;
+      if (!authCode) {
+        return res.status(400).json({ error: 'authCode is required in request body' });
+      }
+      
+      const result = await zohoApi.loginOrRegister(authCode);
+      res.json({ success: true, message: 'Zoho refresh token stored successfully' });
+    } catch (error: any) {
+      console.error('Zoho initialization error:', error);
+      res.status(500).json({ 
+        error: 'Failed to initialize Zoho',
+        details: error.message
+      });
+    }
+  });
+
+  // Health Check/Status Route
+  app.get('/api/status', async (req, res) => {
+    res.json({ 
+      status: "OK", 
+      service: "Zoho Backend", 
+      authenticated: zohoApi.isAuthenticated(), 
+      message: "Backend service is running." 
+    });
+  });
+
+  // Primary user profile route (replacing /api/auth/user)
+  app.get('/api/me', async (req: any, res) => {
+    console.log('Received request for /api/me');
+    try {
+      const userId = req.query.userId || "demo_user_123"; // TODO: Get from session
+      console.log('Attempting to fetch profile for userId:', userId);
+      const profile = await zohoApi.getUserProfile(userId);
+      if (profile) {
+        console.log('Found Zoho profile, returning');
+        res.json(profile);
+      } else {
+        console.log('No Zoho profile found, using demo data');
+        res.json(getDemoUser()); // Fallback to demo data
+      }
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+      console.log('Falling back to demo data due to error');
+      res.json(getDemoUser()); // Fallback to demo data
+    }
+  });
+
+  // Alternate user profile route for client compatibility
+  app.get('/api/user', async (req: any, res) => {
+    try {
+      const userId = req.query.userId || "demo_user_123"; // TODO: Get from session
+      const profile = await zohoApi.getUserProfile(userId);
+      if (profile) {
+        res.json(profile);
+      } else {
+        res.json(getDemoUser()); // Fallback to demo data
+      }
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+      res.json(getDemoUser()); // Fallback to demo data
+    }
+  });
+
+  // Legacy auth route (kept for backward compatibility)
   app.get('/api/auth/user', async (req: any, res) => {
     try {
-      // Return demo user data
-      const demoUser = {
-        id: "demo_user_123",
-        email: "player@chess.com",
-        firstName: "Chess",
-        lastName: "Master",
-        profileImageUrl: null,
-        level: 8,
-        xp: 7250,
-        totalPoints: 1420,
-        gamesPlayed: 156,
-        wins: 89,
-        losses: 42,
-        draws: 18,
-        resignations: 7,
-        currentStreak: 5,
-        bestStreak: 12,
-        tutorialProgress: 75,
-        createdAt: new Date('2024-01-15'),
-        updatedAt: new Date()
-      };
-      res.json(demoUser);
+      // Return demo user data for backward compatibility
+      res.json(getDemoUser());
     } catch (error) {
-      console.error("Error fetching demo user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
+      console.error("Error in legacy auth route:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -56,7 +127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         aiDifficulty: aiDifficulty || null,
         betAmount: betAmount || 0
       };
-      const game = await zohoApi.saveMatch(gameData);
+      const game = await storage.createGame(gameData);
       res.json(game);
     } catch (error) {
       console.error("Error creating game:", error);
@@ -177,7 +248,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/leaderboard/rank', async (req: any, res) => {
     try {
       const userId = req.query.userId || "demo_user_123";
-      const rank = await zohoApi.getRank(userId);
+      const rank = await storage.getUserRank(userId);
       res.json(rank);
     } catch (error) {
       console.error("Error fetching demo rank:", error);
