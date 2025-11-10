@@ -1,9 +1,15 @@
 // zoho-api-service.js
+import SecureStorage from './secureStorage.js';
+
+// Initialize secure storage
+const secureStorage = new SecureStorage(
+  process.env.SECURE_STORAGE_KEY || 'default-key',
+  process.env.SECURE_STORAGE_PATH || './.secure-storage'
+);
 
 // === ZOHO CREATOR API KEYS (Read from environment variables) ===
 const ZOHO_CLIENT_ID = process.env.ZOHO_CLIENT_ID;
 const ZOHO_CLIENT_SECRET = process.env.ZOHO_CLIENT_SECRET;
-// For self-client (Android) we will use the app callback; token exchange will use the dummy redirect
 const ZOHO_REDIRECT_URI = process.env.ZOHO_REDIRECT_URI || "http://127.0.0.1:8000";
 
 // === ZOHO CREATOR API ENDPOINTS (India DC) ===
@@ -53,7 +59,7 @@ async function initialTokenExchange(authCode) {
   const refreshToken = data.refresh_token;
   if (refreshToken) {
     // Persist refresh token securely
-    await SecureStorage.set('zoho_refresh_token', refreshToken);
+    secureStorage.save('zoho_refresh_token', refreshToken);
   }
 
   return data;
@@ -61,7 +67,7 @@ async function initialTokenExchange(authCode) {
 
 // Refresh access token using stored refresh token
 async function refreshAccessToken() {
-  const refreshToken = await SecureStorage.get('zoho_refresh_token');
+  const refreshToken = secureStorage.load('zoho_refresh_token');
   if (!refreshToken) throw new Error('No refresh token found; re-authorization required');
 
   const body = buildFormUrlEncoded({
@@ -128,12 +134,25 @@ async function makeZohoApiRequest(urlPath, method = 'GET', data = null) {
 
 // Try to initialize accessToken on module load using stored refresh token.
 // This runs in the background and will not block module consumers.
+/*
+  Attempt to initialize accessToken on module load using stored refresh token.
+  Make the diagnostic clearer if credentials are missing or are left as placeholders.
+*/
 (async () => {
   try {
-    if (!ZOHO_CLIENT_ID || !ZOHO_CLIENT_SECRET) {
-      console.warn('Zoho client id/secret not set in environment; skipping startup token refresh.');
+    const isPlaceholder = (v) => !v || /your[_-]?client|your[_-]?secret|replace/i.test(v);
+
+    if (isPlaceholder(ZOHO_CLIENT_ID) || isPlaceholder(ZOHO_CLIENT_SECRET)) {
+      console.warn('Zoho credentials are not properly configured.');
+      console.warn('Please set ZOHO_CLIENT_ID and ZOHO_CLIENT_SECRET in your .env (do NOT commit them).');
+      console.warn('Current values (masked):', {
+        ZOHO_CLIENT_ID: ZOHO_CLIENT_ID ? ZOHO_CLIENT_ID.slice(0,6) + '...' : '<missing>',
+        ZOHO_CLIENT_SECRET: ZOHO_CLIENT_SECRET ? ZOHO_CLIENT_SECRET.slice(0,6) + '...' : '<missing>'
+      });
+      // Do not attempt token refresh if credentials are placeholders/missing
       return;
     }
+
     await refreshAccessToken();
     console.info('Zoho access token initialized from stored refresh token.');
   } catch (err) {
@@ -144,12 +163,29 @@ async function makeZohoApiRequest(urlPath, method = 'GET', data = null) {
 
 // === API Functions ===
 const exported = {
+  // Check if we have a valid access token
+  isAuthenticated() {
+    return !!accessToken;
+  },
+
   // User Registration/Login
   // authCode is the authorization code returned by Zoho OAuth flow
   async loginOrRegister(authCode) {
     // Perform initial token exchange and persist refresh token
     await initialTokenExchange(authCode);
     return { success: true };
+  },
+
+  // Get user profile from Zoho
+  async getUserProfile(userId) {
+    try {
+      const path = `/User_Profiles/records/${encodeURIComponent(userId)}`;
+      const result = await makeZohoApiRequest(path, 'GET');
+      return result?.data;
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      return null;
+    }
   },
 
   // Update User Profile Data (Elo, Wins, Losses, Draws)
