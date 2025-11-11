@@ -11,28 +11,28 @@ export default defineConfig({
     },
   },
   server: {
-    port: 38793,
-    host: true,
+    port: 5000,
+    host: '0.0.0.0',
     strictPort: true,
     hmr: {
-      clientPort: 443,
-      host: process.env.CODESPACE_NAME ? `${process.env.CODESPACE_NAME}-38793.app.github.dev` : undefined,
+      host: '0.0.0.0',
+      protocol: 'ws'
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://127.0.0.1:5000',
         changeOrigin: true,
         secure: false,
         ws: true,
         configure: (proxy, options) => {
           proxy.on('error', (err, req, res) => {
-            console.log('proxy error', err);
+            console.error('Proxy error:', err);
           });
           proxy.on('proxyReq', (proxyReq, req, res) => {
-            console.log('Sending Request:', req.method, req.url);
+            console.log('Proxying request:', req.method, req.url);
           });
           proxy.on('proxyRes', (proxyRes, req, res) => {
-            console.log('Received Response:', proxyRes.statusCode, req.url);
+            console.log('Received response:', proxyRes.statusCode, req.url);
           });
         },
       },
