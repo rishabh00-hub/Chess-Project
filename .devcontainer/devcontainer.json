@@ -1,12 +1,12 @@
 {
   "name": "Chess Project",
-  "forwardPorts": [5000, 38793],
+  "forwardPorts": [5000, 38794],
   "portsAttributes": {
     "5000": {
       "label": "Backend API",
       "onAutoForward": "notify"
     },
-    "38793": {
+    "38794": {
       "label": "Frontend App",
       "onAutoForward": "openBrowser"
     }
