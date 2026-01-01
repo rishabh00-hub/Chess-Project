@@ -40,10 +40,19 @@ app.use((req, res, next) => {
   next();
 });
 
+// 404 Handler
+app.use((req, res, next) => {
+  const err = new Error("Not Found");
+  (err as any).status = 404;
+  next(err);
+});
+
 // Error handling middleware
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error(err.stack);
-  res.status(500).json({ error: "Internal Server Error" });
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || "Internal Server Error";
+  if (res.headersSent) return next(err);
+  res.status(status).json({ message });
 });
 
 async function main() {
@@ -60,10 +69,10 @@ async function main() {
   }
 
   // Register API routes
-  await registerRoutes(app);
+  const httpServer = await registerRoutes(app);
 
-  app.listen(port, () => {
-    log(`Server running at http://localhost:${port}`);
+  httpServer.listen(port, '0.0.0.0', () => {
+    log(`Server running at http://0.0.0.0:${port}`);
   });
 }
 

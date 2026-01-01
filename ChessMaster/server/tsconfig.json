@@ -1,4 +1,5 @@
 {
+  "composite": true,
   "compilerOptions": {
     "target": "ES2022",
     "module": "NodeNext",
@@ -16,7 +17,9 @@
       "@shared/*": ["../shared/*"]
     },
     "types": ["node"],
-    "outDir": "../dist/server"
+    "outDir": "../dist/server",
+    "declaration": true,
+    "declarationMap": true
   },
   "include": ["**/*", "../shared/**/*"],
   "exclude": ["node_modules", "dist"]

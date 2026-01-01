@@ -3,19 +3,31 @@ import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trophy, Medal, Award } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { isUnauthorizedError } from "@/lib/authUtils";
 import { useEffect } from "react";
+
+interface LeaderboardPlayer {
+  id: string;
+  firstName?: string;
+  email?: string;
+  profileImageUrl?: string;
+  level: number;
+  totalPoints: number;
+}
+
+interface UserRankData {
+  rank: number;
+}
 
 export default function Leaderboard() {
   const { user, isLoading } = useAuth();
   const { toast } = useToast();
 
-  const { data: leaderboard = [] } = useQuery({
+  const { data: leaderboard = [] } = useQuery<LeaderboardPlayer[]>({
     queryKey: ["/api/leaderboard"],
     retry: false,
   });
 
-  const { data: userRankData } = useQuery({
+  const { data: userRankData } = useQuery<UserRankData>({
     queryKey: ["/api/leaderboard/rank"],
     retry: false,
   });

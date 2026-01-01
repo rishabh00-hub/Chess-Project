@@ -3,8 +3,6 @@ import type { Express } from 'express';
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { storage } from './storage.js';
-import { insertGameSchema, insertLessonProgressSchema } from '../shared/schema.js';
-import { z } from 'zod';
 import zohoApi from './zoho-api-service.js';
 
 // Demo user helper function
@@ -43,7 +41,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'authCode is required in request body' });
       }
       
-      const result = await zohoApi.loginOrRegister(authCode);
+      await zohoApi.loginOrRegister(authCode);
       res.json({ success: true, message: 'Zoho refresh token stored successfully' });
     } catch (error: any) {
       console.error('Zoho initialization error:', error);
@@ -66,46 +64,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Primary user profile route (replacing /api/auth/user)
   app.get('/api/me', async (req: any, res) => {
-    console.log('Received request for /api/me');
     try {
-      const userId = req.query.userId || "demo_user_123"; // TODO: Get from session
-      console.log('Attempting to fetch profile for userId:', userId);
-      const profile = await zohoApi.getUserProfile(userId);
-      if (profile) {
-        console.log('Found Zoho profile, returning');
-        res.json(profile);
-      } else {
-        console.log('No Zoho profile found, using demo data');
-        res.json(getDemoUser()); // Fallback to demo data
+      // If Zoho is not authenticated, return null so frontend shows empty state
+      if (!zohoApi.isAuthenticated()) {
+        console.log('/api/me: Zoho not authenticated, returning null');
+        return res.status(200).json(null);
       }
+
+      const userId = req.query.userId; // Expecting Zoho-backed user id
+      console.log('Attempting to fetch profile for userId:', userId);
+      try {
+        const profile = await zohoApi.getUserProfile(userId);
+        if (profile) {
+          console.log('Found Zoho profile, returning');
+          return res.status(200).json(profile);
+        }
+      } catch (profileErr) {
+        console.error('Error fetching Zoho profile:', profileErr);
+      }
+
+      // If we reach here, there is no real user profile — return null (no fake/demo data)
+      return res.status(200).json(null);
     } catch (error) {
       console.error("Error fetching user profile:", error);
-      console.log('Falling back to demo data due to error');
-      res.json(getDemoUser()); // Fallback to demo data
+      // On unexpected errors, return null — keep server stable and let frontend show empty state
+      return res.status(200).json(null);
     }
   });
 
   // Alternate user profile route for client compatibility
   app.get('/api/user', async (req: any, res) => {
     try {
-      const userId = req.query.userId || "demo_user_123"; // TODO: Get from session
+      if (!zohoApi.isAuthenticated()) {
+        return res.status(200).json(null);
+      }
+
+      const userId = req.query.userId;
       const profile = await zohoApi.getUserProfile(userId);
       if (profile) {
-        res.json(profile);
-      } else {
-        res.json(getDemoUser()); // Fallback to demo data
+        return res.json(profile);
       }
+
+      return res.status(200).json(null);
     } catch (error) {
       console.error("Error fetching user profile:", error);
-      res.json(getDemoUser()); // Fallback to demo data
+      res.status(200).json(null);
     }
   });
 
   // Legacy auth route (kept for backward compatibility)
   app.get('/api/auth/user', async (req: any, res) => {
     try {
-      // Return demo user data for backward compatibility
-      res.json(getDemoUser());
+      // If Zoho is not authenticated, return null (frontend shows not-logged-in state)
+      if (!zohoApi.isAuthenticated()) {
+        return res.status(200).json(null);
+      }
+
+      const userId = req.query.userId;
+      try {
+        const profile = await zohoApi.getUserProfile(userId);
+        if (profile) return res.json(profile);
+      } catch (err) {
+        console.error('Error fetching Zoho profile for /api/auth/user:', err);
+      }
+
+      res.status(200).json(null);
     } catch (error) {
       console.error("Error in legacy auth route:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -137,122 +160,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/games/user/recent', async (req: any, res) => {
     try {
-      const demoGames = [
-        {
-          id: 1,
-          whitePlayerId: "demo_user_123",
-          blackPlayerId: "ai",
-          winnerId: "demo_user_123",
-          gameMode: "ai",
-          status: "completed",
-          result: "white_wins",
-          createdAt: new Date(Date.now() - 86400000), // 1 day ago
-          completedAt: new Date(Date.now() - 86400000 + 1200000) // 20 min later
-        },
-        {
-          id: 2,
-          whitePlayerId: "demo_user_123", 
-          blackPlayerId: "ai",
-          winnerId: null,
-          gameMode: "ai",
-          status: "completed",
-          result: "draw",
-          createdAt: new Date(Date.now() - 172800000), // 2 days ago
-          completedAt: new Date(Date.now() - 172800000 + 1800000) // 30 min later
-        },
-        {
-          id: 3,
-          whitePlayerId: "demo_user_123",
-          blackPlayerId: "ai", 
-          winnerId: "ai",
-          gameMode: "ai",
-          status: "completed",
-          result: "black_wins",
-          createdAt: new Date(Date.now() - 259200000), // 3 days ago
-          completedAt: new Date(Date.now() - 259200000 + 900000) // 15 min later
-        }
-      ];
-      
-      res.json(demoGames);
+      // Try to get real data from storage
+      const userId = req.query.userId;
+      if (storage && typeof storage.getRecentGames === 'function') {
+        const games = await storage.getRecentGames(userId);
+        return res.status(200).json(Array.isArray(games) ? games : []);
+      }
     } catch (error) {
-      console.error("Error fetching demo recent games:", error);
-      res.status(500).json({ message: "Failed to fetch recent games" });
+      console.error("Error fetching recent games:", error);
     }
+
+    // If storage not available or error, return an empty array (frontend shows empty state)
+    return res.status(200).json([]);
   });
 
-  // Demo leaderboard routes
-  app.get('/api/leaderboard', async (req, res) => {
+  // Leaderboard route — return real data if available, otherwise empty array
+  app.get('/api/leaderboard', async (req: any, res) => {
     try {
-      const demoLeaderboard = [
-        {
-          id: "player_001",
-          email: "grandmaster@chess.com",
-          firstName: "Magnus",
-          lastName: "Champion",
-          profileImageUrl: null,
-          level: 25,
-          totalPoints: 5420,
-          gamesPlayed: 342,
-          wins: 298,
-          losses: 31,
-          draws: 13
-        },
-        {
-          id: "player_002", 
-          email: "knight@chess.com",
-          firstName: "Anna",
-          lastName: "Knight",
-          profileImageUrl: null,
-          level: 18,
-          totalPoints: 3180,
-          gamesPlayed: 267,
-          wins: 201,
-          losses: 48,
-          draws: 18
-        },
-        {
-          id: "demo_user_123",
-          email: "player@chess.com",
-          firstName: "Chess",
-          lastName: "Master",
-          profileImageUrl: null,
-          level: 8,
-          totalPoints: 1420,
-          gamesPlayed: 156,
-          wins: 89,
-          losses: 42,
-          draws: 18
-        },
-        {
-          id: "player_004",
-          email: "rookie@chess.com", 
-          firstName: "Alex",
-          lastName: "Rookie",
-          profileImageUrl: null,
-          level: 4,
-          totalPoints: 680,
-          gamesPlayed: 89,
-          wins: 45,
-          losses: 32,
-          draws: 12
-        }
-      ];
-      
-      res.json(demoLeaderboard);
+      // Try to get real data from storage
+      if (storage && typeof storage.getLeaderboard === 'function') {
+        const list = await storage.getLeaderboard();
+        return res.status(200).json(Array.isArray(list) ? list : []);
+      }
     } catch (error) {
-      console.error("Error fetching demo leaderboard:", error);
-      res.status(500).json({ message: "Failed to fetch leaderboard" });
+      console.error("Error fetching leaderboard:", error);
     }
+
+    // If storage not available or error, return empty array (frontend shows empty state)
+    return res.status(200).json([]);
   });
 
+  // Return a stable zero state for rank so frontend shows empty state instead of 404
   app.get('/api/leaderboard/rank', async (req: any, res) => {
     try {
-      const userId = req.query.userId || "demo_user_123";
-      const rank = await storage.getUserRank(userId);
-      res.json(rank);
+      const userId = req.query.userId || null;
+      // We intentionally return a zero/null rank rather than fake/demo values
+      res.json({ rank: 0, userId });
     } catch (error) {
-      console.error("Error fetching demo rank:", error);
-      res.status(500).json({ message: "Failed to fetch user rank" });
+      console.error('Unexpected error in /api/leaderboard/rank:', error);
+      res.status(200).json({ rank: 0, userId: req.query.userId || null });
     }
   });
 

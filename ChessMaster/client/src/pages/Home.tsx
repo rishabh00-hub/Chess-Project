@@ -9,16 +9,10 @@ import {
   Handshake, 
   X, 
   Bell,
-  Users,
-  Target,
-  Zap,
-  Gift
+  Zap
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { isUnauthorizedError } from "@/lib/authUtils";
-import { useEffect } from "react";
 import AnimatedCounter from "@/components/AnimatedCounter";
-import NotificationBanner from "@/components/NotificationBanner";
 
 export default function Home() {
   // Initiate Zoho OAuth2 login redirect
@@ -175,10 +169,10 @@ export default function Home() {
               </CardContent>
             </Card>
           ) : (
-            (recentGames as any[]).map((game: any, index: number) => {
+            (recentGames as any[]).map((game: any) => {
                   const isWin = game.winnerId === zohoUser?.zoho_record_id;
               const isDraw = game.result === 'draw';
-              const isLoss = !isWin && !isDraw;
+              // const isLoss = !isWin && !isDraw;
               
               let resultIcon, resultText, resultColor, points;
               

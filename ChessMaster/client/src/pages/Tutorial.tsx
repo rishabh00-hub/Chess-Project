@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,15 +25,15 @@ export default function Tutorial() {
   const { user, isLoading } = useAuth();
   const { toast } = useToast();
 
-  const { data: lessons = [] } = useQuery({
-    queryKey: ["/api/tutorial/lessons"],
-    retry: false,
-  });
+  // const { data: lessons = [] } = useQuery({
+  //   queryKey: ["/api/tutorial/lessons"],
+  //   retry: false,
+  // });
 
-  const { data: progress = [] } = useQuery({
-    queryKey: ["/api/tutorial/progress"],
-    retry: false,
-  });
+  // const { data: progress = [] } = useQuery({
+  //   queryKey: ["/api/tutorial/progress"],
+  //   retry: false,
+  // });
 
   const updateProgressMutation = useMutation({
     mutationFn: async ({ lessonId, completed, score }: { lessonId: number; completed: boolean; score?: number }) => {

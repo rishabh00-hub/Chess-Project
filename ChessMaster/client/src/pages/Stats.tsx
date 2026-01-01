@@ -45,7 +45,7 @@ export default function Stats() {
   const winPercentage = totalGames > 0 ? (wins / totalGames) * 100 : 0;
   const lossPercentage = totalGames > 0 ? (losses / totalGames) * 100 : 0;
   const drawPercentage = totalGames > 0 ? (draws / totalGames) * 100 : 0;
-  const resignationPercentage = totalGames > 0 ? (resignations / totalGames) * 100 : 0;
+  // const resignationPercentage = totalGames > 0 ? (resignations / totalGames) * 100 : 0;
 
   // Generate fake weekly performance data for visualization
   const weeklyPerformance = [

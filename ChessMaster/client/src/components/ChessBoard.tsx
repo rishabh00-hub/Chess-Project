@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ChessEngine, type Move } from "@shared/chessEngine";
+import { ChessEngine } from "@shared/chessEngine";
 
 interface ChessBoardProps {
   size?: 'small' | 'medium' | 'large';

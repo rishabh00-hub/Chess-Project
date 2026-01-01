@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import ChessBoard from "@/components/ChessBoard";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ArrowLeft, Flag, Users, Trophy, Clock } from "lucide-react";
+import { ArrowLeft, Flag, Users, Trophy } from "lucide-react";
 import type { Game as GameType } from "@shared/schema";
 
 export default function Game() {

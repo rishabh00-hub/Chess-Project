@@ -25,7 +25,7 @@ export class GameManager {
     const matchData = {
       whitePlayerId,
       blackPlayerId: gameMode === 'ai' ? 'ai' : undefined,
-      currentTurn: 'white' as 'white',
+      currentTurn: 'white' as const,
       status: (gameMode === 'ai' ? 'active' : 'waiting') as 'active' | 'waiting',
       moves: [],
       startTime: new Date(),
@@ -37,36 +37,36 @@ export class GameManager {
     };
   }
 
-  public joinGame(gameId: number, playerId: string): boolean {
+  public joinGame(_gameId: number, _playerId: string): boolean {
   // TODO: Implement Zoho API call to join game
   return true;
   }
 
-  public makeMove(gameId: number, playerId: string, move: Move): boolean {
+  public makeMove(_gameId: number, _playerId: string, _move: Move): boolean {
     // TODO: Implement Zoho API call to make move
     return true;
   }
 
-  private makeAIMove(gameId: number): void {
+  private makeAIMove(_gameId: number): void {
     // TODO: Implement Zoho API call for AI move
   }
 
-  public resignGame(gameId: number, playerId: string): boolean {
+  public resignGame(_gameId: number, _playerId: string): boolean {
     // TODO: Implement Zoho API call to resign game
     return true;
   }
 
-  public offerDraw(gameId: number, playerId: string): boolean {
+  public offerDraw(_gameId: number, _playerId: string): boolean {
   // TODO: Implement Zoho API call to offer draw
   return true;
   }
 
-  public getGame(gameId: number): GameState | undefined {
+  public getGame(_gameId: number): GameState | undefined {
   // TODO: Implement Zoho API call to get game by ID
   return undefined;
   }
 
-  public getPlayerGames(playerId: string): GameState[] {
+  public getPlayerGames(_playerId: string): GameState[] {
     // Use Zoho API to fetch player games (placeholder)
     // TODO: Implement Zoho API call to fetch games for playerId
     return [];

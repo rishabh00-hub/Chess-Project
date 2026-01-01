@@ -21,10 +21,5 @@
     "noEmit": true
   },
   "include": ["client/src/**/*", "shared/**/*"],
-  "exclude": ["node_modules", "dist", "server/**/*"],
-  "references": [
-    {
-     "path": "./server/tsconfig.json"
-    }
-  ]
+  "exclude": ["node_modules", "dist", "server/**/*"]
 }

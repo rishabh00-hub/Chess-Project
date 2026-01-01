@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Play, Plus, X, Bot, Users, Globe, Coins } from "lucide-react";
+import { Play, X, Bot, Users, Globe, Coins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
