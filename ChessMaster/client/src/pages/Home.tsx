@@ -18,7 +18,7 @@ export default function Home() {
   // Initiate Zoho OAuth2 login redirect
   const handleZohoLogin = () => {
     // Construct Zoho OAuth2 URL
-    const clientId = "1000.W5U2PRBOGTG20P5IONSE5FCKQ14ZEJ";
+    const clientId = "1000.2U8KXHE166LN9QF7UOOQWP9RPAT6BR";
     const redirectUri = encodeURIComponent("chessmaster://callback");
     const scope = encodeURIComponent("ZohoCreator.user.CREATE ZohoCreator.user.READ");
     const responseType = "code";

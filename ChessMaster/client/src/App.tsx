@@ -13,11 +13,10 @@ import Stats from "@/pages/Stats";
 import Tutorial from "@/pages/Tutorial";
 import BottomNavigation from "@/components/BottomNavigation";
 import FloatingActionButton from "@/components/FloatingActionButton";
+import { useAuth } from "@/hooks/useAuth";
 
 function Router() {
-  // Temporarily bypass authentication for UI demonstration
-  const isAuthenticated = true;
-  const isLoading = false;
+  const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
     return (
