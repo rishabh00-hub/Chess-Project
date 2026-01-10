@@ -5,30 +5,6 @@ import type { Server } from 'node:http';
 import { storage } from './storage.js';
 import zohoApi from './zoho-api-service.js';
 
-// Demo user helper function
-function getDemoUser() {
-  return {
-    id: "demo_user_123",
-    email: "player@chess.com",
-    firstName: "Chess",
-    lastName: "Master",
-    profileImageUrl: null,
-    level: 8,
-    xp: 7250,
-    totalPoints: 1420,
-    gamesPlayed: 156,
-    wins: 89,
-    losses: 42,
-    draws: 18,
-    resignations: 7,
-    currentStreak: 5,
-    bestStreak: 12,
-    tutorialProgress: 75,
-    createdAt: new Date('2024-01-15'),
-    updatedAt: new Date()
-  };
-}
-
 export async function registerRoutes(app: Express): Promise<Server> {
   // Temporarily disable auth for UI demonstration
   // await setupAuth(app);
@@ -65,47 +41,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Primary user profile route (replacing /api/auth/user)
   app.get('/api/me', async (req: any, res) => {
     try {
-      // If Zoho is not authenticated, return null so frontend shows empty state
-      if (!zohoApi.isAuthenticated()) {
-        console.log('/api/me: Zoho not authenticated, returning null');
-        return res.status(200).json(null);
-      }
-
-      const userId = req.query.userId; // Expecting Zoho-backed user id
-      console.log('Attempting to fetch profile for userId:', userId);
-      try {
-        const profile = await zohoApi.getUserProfile(userId);
-        if (profile) {
-          console.log('Found Zoho profile, returning');
-          return res.status(200).json(profile);
-        }
-      } catch (profileErr) {
-        console.error('Error fetching Zoho profile:', profileErr);
-      }
-
-      // If we reach here, there is no real user profile — return null (no fake/demo data)
-      return res.status(200).json(null);
+      const userId = req.query.userId;
+      const user = await storage.getUser(userId);
+      res.json(user);
     } catch (error) {
       console.error("Error fetching user profile:", error);
-      // On unexpected errors, return null — keep server stable and let frontend show empty state
-      return res.status(200).json(null);
+      res.status(200).json(null);
     }
   });
 
   // Alternate user profile route for client compatibility
   app.get('/api/user', async (req: any, res) => {
     try {
-      if (!zohoApi.isAuthenticated()) {
-        return res.status(200).json(null);
-      }
-
       const userId = req.query.userId;
-      const profile = await zohoApi.getUserProfile(userId);
-      if (profile) {
-        return res.json(profile);
-      }
-
-      return res.status(200).json(null);
+      const user = await storage.getUser(userId);
+      res.json(user);
     } catch (error) {
       console.error("Error fetching user profile:", error);
       res.status(200).json(null);
@@ -115,20 +65,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Legacy auth route (kept for backward compatibility)
   app.get('/api/auth/user', async (req: any, res) => {
     try {
-      // If Zoho is not authenticated, return null (frontend shows not-logged-in state)
-      if (!zohoApi.isAuthenticated()) {
-        return res.status(200).json(null);
-      }
-
       const userId = req.query.userId;
-      try {
-        const profile = await zohoApi.getUserProfile(userId);
-        if (profile) return res.json(profile);
-      } catch (err) {
-        console.error('Error fetching Zoho profile for /api/auth/user:', err);
-      }
-
-      res.status(200).json(null);
+      const user = await storage.getUser(userId);
+      res.json(user);
     } catch (error) {
       console.error("Error in legacy auth route:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -160,42 +99,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/games/user/recent', async (req: any, res) => {
     try {
-      // Try to get real data from storage
       const userId = req.query.userId;
-      if (storage && typeof storage.getRecentGames === 'function') {
-        const games = await storage.getRecentGames(userId);
-        return res.status(200).json(Array.isArray(games) ? games : []);
-      }
+      const games = await storage.getRecentGames(userId);
+      res.status(200).json(games);
     } catch (error) {
       console.error("Error fetching recent games:", error);
+      res.status(200).json([]);
     }
-
-    // If storage not available or error, return an empty array (frontend shows empty state)
-    return res.status(200).json([]);
   });
 
   // Leaderboard route — return real data if available, otherwise empty array
   app.get('/api/leaderboard', async (req: any, res) => {
     try {
-      // Try to get real data from storage
-      if (storage && typeof storage.getLeaderboard === 'function') {
-        const list = await storage.getLeaderboard();
-        return res.status(200).json(Array.isArray(list) ? list : []);
-      }
+      const list = await storage.getLeaderboard();
+      res.status(200).json(list);
     } catch (error) {
       console.error("Error fetching leaderboard:", error);
+      res.status(200).json([]);
     }
-
-    // If storage not available or error, return empty array (frontend shows empty state)
-    return res.status(200).json([]);
   });
 
   // Return a stable zero state for rank so frontend shows empty state instead of 404
   app.get('/api/leaderboard/rank', async (req: any, res) => {
     try {
-      const userId = req.query.userId || null;
-      // We intentionally return a zero/null rank rather than fake/demo values
-      res.json({ rank: 0, userId });
+      const userId = req.query.userId;
+      const rank = await storage.getUserRank(userId);
+      res.json({ rank, userId });
     } catch (error) {
       console.error('Unexpected error in /api/leaderboard/rank:', error);
       res.status(200).json({ rank: 0, userId: req.query.userId || null });
@@ -205,83 +134,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Demo tutorial routes
   app.get('/api/tutorial/lessons', async (req, res) => {
     try {
-      const demoLessons = [
-        {
-          id: 1,
-          title: "Basic Piece Movement",
-          description: "Learn how each chess piece moves",
-          category: "rules",
-          difficulty: 1,
-          orderIndex: 1,
-          isActive: true
-        },
-        {
-          id: 2,
-          title: "Castling",
-          description: "Master the special castling move",
-          category: "rules", 
-          difficulty: 2,
-          orderIndex: 2,
-          isActive: true
-        },
-        {
-          id: 3,
-          title: "En Passant",
-          description: "Understand the en passant capture",
-          category: "rules",
-          difficulty: 3,
-          orderIndex: 3,
-          isActive: true
-        }
-      ];
-      res.json(demoLessons);
+      const lessons = await storage.getTutorialLessons();
+      res.json(lessons);
     } catch (error) {
-      console.error("Error fetching demo tutorial lessons:", error);
+      console.error("Error fetching tutorial lessons:", error);
       res.status(500).json({ message: "Failed to fetch tutorial lessons" });
     }
   });
 
   app.get('/api/tutorial/progress', async (req: any, res) => {
     try {
-      const demoProgress = [
-        {
-          id: 1,
-          userId: "demo_user_123",
-          lessonId: 1,
-          completed: true,
-          score: 100,
-          completedAt: new Date(Date.now() - 604800000) // 1 week ago
-        },
-        {
-          id: 2,
-          userId: "demo_user_123", 
-          lessonId: 2,
-          completed: true,
-          score: 85,
-          completedAt: new Date(Date.now() - 345600000) // 4 days ago
-        }
-      ];
-      res.json(demoProgress);
+      // Since no userId or lessonId specified, return empty array
+      res.json([]);
     } catch (error) {
-      console.error("Error fetching demo tutorial progress:", error);
+      console.error("Error fetching tutorial progress:", error);
       res.status(500).json({ message: "Failed to fetch tutorial progress" });
     }
   });
 
   app.post('/api/tutorial/progress', async (req: any, res) => {
     try {
-      const demoProgress = {
-        id: Math.floor(Math.random() * 1000),
-        userId: "demo_user_123",
-        lessonId: req.body.lessonId,
-        completed: req.body.completed,
-        score: req.body.score || 100,
-        completedAt: new Date()
-      };
-      
-      res.json(demoProgress);
+      const progress = await storage.updateLessonProgress(req.body);
+      res.json(progress);
     } catch (error) {
-      console.error("Error updating demo lesson progress:", error);
+      console.error("Error updating lesson progress:", error);
       res.status(500).json({ message: "Failed to update lesson progress" });
     }
   });

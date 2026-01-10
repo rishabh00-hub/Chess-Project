@@ -18,6 +18,10 @@ const ZOHO_BASE_URL = "https://creator.zoho.in/api/v2/Chess%20Database/form";
 // OAuth token endpoint (India DC)
 const ZOHO_OAUTH_TOKEN_URL = "https://accounts.zoho.in/oauth/v2/token";
 
+// Form names
+const FORM_USER = "User_Profiles";
+const FORM_GAME = "Match_History";
+
 // === Placeholder for OAuth2 Token Management ===
 let accessToken = null;
 
