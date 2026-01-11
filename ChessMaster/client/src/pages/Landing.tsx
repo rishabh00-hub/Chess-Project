@@ -4,7 +4,13 @@ import { Crown } from "lucide-react";
 
 export default function Landing() {
   const handleLogin = () => {
-    window.location.href = "/api/login";
+    // Use the Client ID from your environment or Home.tsx
+    const clientId = "1000.2U8KXHE166LN9QF7UOOQWP9RPAT6BR"; 
+    const redirectUri = encodeURIComponent(window.location.origin + "/api/callback");
+    const scope = encodeURIComponent("ZohoCreator.user.CREATE ZohoCreator.user.READ");
+    const responseType = "code";
+    const authUrl = `https://accounts.zoho.com/oauth/v2/auth?scope=${scope}&client_id=${clientId}&response_type=${responseType}&access_type=offline&redirect_uri=${redirectUri}`;
+    window.location.href = authUrl;
   };
 
   return (

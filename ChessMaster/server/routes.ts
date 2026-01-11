@@ -233,6 +233,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Handle Zoho OAuth Callback
+  app.get('/api/callback', async (req, res) => {
+    try {
+      const { code } = req.query;
+      if (code) {
+        await zohoApi.loginOrRegister(code.toString());
+      }
+      res.redirect('/'); // Redirect back to Home Page
+    } catch (error) {
+      console.error("Login failed:", error);
+      res.redirect('/?error=login_failed');
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
