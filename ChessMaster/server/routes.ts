@@ -234,16 +234,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Handle Zoho OAuth Callback
+  app.get('/', (req, res, next) => {
+    const { code } = req.query;
+    if (code) {
+      res.redirect(`/api/callback?code=${code}`);
+    } else {
+      next();
+    }
+  });
+
   app.get('/api/callback', async (req, res) => {
     try {
       const { code } = req.query;
       if (code) {
         await zohoApi.loginOrRegister(code.toString());
+        console.log("✅ Successfully logged in with code");
       }
-      res.redirect('/'); // Redirect back to Home Page
+      res.redirect('/'); 
     } catch (error) {
-      console.error("Login failed:", error);
-      res.redirect('/?error=login_failed');
+      console.error("Login Error:", error);
+      res.redirect('/?error=auth_failed');
     }
   });
 
