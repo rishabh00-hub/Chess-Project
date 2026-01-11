@@ -34,7 +34,7 @@ function buildFormUrlEncoded(obj) {
 }
 
 // Exchange authorization code for access + refresh tokens (run once)
-async function initialTokenExchange(authCode) {
+async function initialTokenExchange(authCode, customRedirectUri) {
   if (!authCode) throw new Error('authCode is required');
 
   const body = buildFormUrlEncoded({
@@ -42,7 +42,7 @@ async function initialTokenExchange(authCode) {
     client_id: ZOHO_CLIENT_ID,
     client_secret: ZOHO_CLIENT_SECRET,
     grant_type: 'authorization_code',
-    redirect_uri: ZOHO_REDIRECT_URI,
+    redirect_uri: customRedirectUri || ZOHO_REDIRECT_URI,
   });
 
   const res = await fetch(ZOHO_OAUTH_TOKEN_URL, {
@@ -174,9 +174,9 @@ const exported = {
 
   // User Registration/Login
   // authCode is the authorization code returned by Zoho OAuth flow
-  async loginOrRegister(authCode) {
+  async loginOrRegister(authCode, customRedirectUri) {
     // Perform initial token exchange and persist refresh token
-    await initialTokenExchange(authCode);
+    await initialTokenExchange(authCode, customRedirectUri);
     return { success: true };
   },
 

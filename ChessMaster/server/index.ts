@@ -40,13 +40,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// 404 Handler
-app.use((req, res, next) => {
-  const err = new Error("Not Found");
-  (err as any).status = 404;
-  next(err);
-});
-
 // Error handling middleware
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   const status = err.status || err.statusCode || 500;
@@ -58,6 +51,9 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 async function main() {
   const port = process.env.PORT || 5000; // Backend running on port 5000
 
+  // Register API routes
+  const httpServer = await registerRoutes(app);
+
   // If running the client separately (developer preference), skip embedding Vite
   if (process.env.SEPARATE_CLIENT === 'true') {
     // Do not call setupVite or serveStatic — backend will only expose API routes.
@@ -67,9 +63,6 @@ async function main() {
   } else {
     await setupVite(app);
   }
-
-  // Register API routes
-  const httpServer = await registerRoutes(app);
 
   httpServer.listen(port, '0.0.0.0', () => {
     log(`Server running at http://0.0.0.0:${port}`);

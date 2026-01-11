@@ -38,15 +38,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // Primary user profile route (replacing /api/auth/user)
+  // Primary user profile route
   app.get('/api/me', async (req: any, res) => {
     try {
-      const userId = req.query.userId;
-      const user = await storage.getUser(userId);
-      res.json(user);
+      // 1. If we have a Zoho token in memory, we are logged in!
+      if (zohoApi.isAuthenticated()) {
+        // Use the requested userId OR fallback to a default ID to prevent null loops
+        const userId = req.query.userId || "default_player";
+        
+        let user = await storage.getUser(userId);
+        
+        // If user doesn't exist in DB yet, create a temporary session user
+        if (!user) {
+          user = { 
+            id: 1, 
+            username: "Champion Player", 
+            eloRating: 1200, 
+            isGuest: false,
+            // Add other fields if your schema requires them
+          };
+        }
+        return res.json(user);
+      }
+      
+      // 2. Not authenticated
+      res.json(null);
     } catch (error) {
       console.error("Error fetching user profile:", error);
-      res.status(200).json(null);
+      // Return null so frontend redirects to login instead of crashing
+      res.json(null);
     }
   });
 
