@@ -172,6 +172,22 @@ const exported = {
     return !!accessToken;
   },
 
+  // Add this function to the exported object
+  async ensureAuthenticated() {
+    // 1. If already in memory, good to go
+    if (accessToken) return true;
+         
+    // 2. If not, try to load from secure storage
+    console.log("⚠️ Token missing in memory, attempting to reload...");
+    try {
+      await refreshAccessToken(); // This loads from file and refreshes
+      return !!accessToken;
+    } catch (error) {
+      console.error("Auto-refresh failed:", error.message);
+      return false;
+    }
+  },
+
   // User Registration/Login
   // authCode is the authorization code returned by Zoho OAuth flow
   async loginOrRegister(authCode, customRedirectUri) {

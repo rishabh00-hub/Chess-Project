@@ -42,7 +42,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/me', async (req: any, res) => {
     try {
       // 1. If we have a Zoho token in memory, we are logged in!
-      if (zohoApi.isAuthenticated()) {
+      if (await zohoApi.ensureAuthenticated()) {
         // Use the requested userId OR fallback to a default ID to prevent null loops
         const userId = req.query.userId || "default_player";
         
