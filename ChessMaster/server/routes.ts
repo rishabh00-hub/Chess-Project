@@ -41,31 +41,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Primary user profile route
   app.get('/api/me', async (req: any, res) => {
     try {
-      // 1. If we have a Zoho token in memory, we are logged in!
-      if (await zohoApi.ensureAuthenticated()) {
-        // Use the requested userId OR fallback to a default ID to prevent null loops
+      // FIX 3: Handle server restarts by awaiting the auth check
+      const isLoggedIn = await zohoApi.ensureAuthenticated();
+
+      if (isLoggedIn) {
+        // Use the requested ID, or fallback to 'default_player' only if necessary
         const userId = req.query.userId || "default_player";
-        
+          
         let user = await storage.getUser(userId);
-        
-        // If user doesn't exist in DB yet, create a temporary session user
+          
+        // FIX 4: NO MORE AMNESIA. If user is missing, CREATE and SAVE them immediately.
         if (!user) {
-          user = { 
-            id: 1, 
-            username: "Champion Player", 
-            eloRating: 1200, 
-            isGuest: false,
-            // Add other fields if your schema requires them
-          };
+          console.log(`🆕 First time login for: ${userId}. Saving to DB...`);
+          user = await storage.createUser({
+            username: userId === "default_player" ? "Chess Master" : userId,
+            eloRating: 1200,
+            isGuest: false
+          });
         }
         return res.json(user);
       }
       
-      // 2. Not authenticated
+      // Not logged in
       res.json(null);
     } catch (error) {
-      console.error("Error fetching user profile:", error);
-      // Return null so frontend redirects to login instead of crashing
+      console.error("Auth/Profile Error:", error);
       res.json(null);
     }
   });
@@ -267,13 +267,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { code } = req.query;
       if (code) {
-        await zohoApi.loginOrRegister(code.toString());
-        console.log("✅ Successfully logged in with code");
+        // FIX 1: Construct the EXACT redirect URI dynamically to support HTTPS/Codespaces
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+        const host = req.headers['x-forwarded-host'] || req.get('host');
+        const currentRedirectUri = `${protocol}://${host}/api/callback`;
+          
+        console.log(`🔗 Exchanging Code. URI: ${currentRedirectUri}`);
+
+        // FIX 2: Pass the URI to the service so Zoho accepts the handshake
+        await zohoApi.loginOrRegister(code.toString(), currentRedirectUri);
+        console.log("✅ Zoho Auth Successful. Token stored.");
       }
-      res.redirect('/'); 
+      res.redirect('/?login=success'); 
     } catch (error) {
-      console.error("Login Error:", error);
-      res.redirect('/?error=auth_failed');
+      console.error("❌ Login Handshake Failed:", error);
+      res.redirect('/?error=auth_failed_check_logs');
     }
   });
 
