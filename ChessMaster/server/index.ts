@@ -6,6 +6,7 @@ import { registerRoutes } from "./routes.js";
 import { setupVite, serveStatic, log } from "./vite.js";
 
 const app = express();
+app.set('trust proxy', 1); // Required for correct protocol detection (http vs https)
 
 // Enable CORS for development
 app.use((req, res, next) => {
