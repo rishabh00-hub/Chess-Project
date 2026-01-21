@@ -6,6 +6,12 @@ export default function Landing() {
   const handleLogin = () => {
     // Use the Client ID from environment variables
     const clientId = import.meta.env.VITE_ZOHO_CLIENT_ID;
+
+    // Safety Check: Alert developer if .env is missing
+    if (!clientId) {
+      console.error("🚨 CRITICAL: VITE_ZOHO_CLIENT_ID is missing in .env file!");
+    }
+
     const redirectUri = encodeURIComponent(window.location.origin + "/api/callback");
     const scope = encodeURIComponent("ZohoCreator.user.CREATE ZohoCreator.user.READ");
     const responseType = "code";
