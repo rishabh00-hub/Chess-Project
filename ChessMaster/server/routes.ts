@@ -53,10 +53,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // FIX 4: NO MORE AMNESIA. If user is missing, CREATE and SAVE them immediately.
         if (!user) {
           console.log(`🆕 First time login for: ${userId}. Saving to DB...`);
-          user = await storage.createUser({
+          user = await storage.upsertUser({
+            id: userId,
             username: userId === "default_player" ? "Chess Master" : userId,
-            eloRating: 1200,
-            isGuest: false
+            elo: 1200
           });
         }
         return res.json(user);
