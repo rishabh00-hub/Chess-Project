@@ -34,7 +34,7 @@ export interface Game {
   blackPlayerId: string;
   winnerId?: string;
   gameMode: 'ai' | 'friend' | 'online' | 'bet';
-  status: 'active' | 'completed' | 'abandoned';
+  status: 'active' | 'completed' | 'abandoned' | 'draw' | 'resigned' | 'timeout';
   result?: 'white_wins' | 'black_wins' | 'draw' | 'resignation';
   currentTurn: 'white' | 'black';
   currentPosition: string;
@@ -81,7 +81,7 @@ export const insertGameSchema = z.object({
   whitePlayerId: z.string(),
   blackPlayerId: z.string(),
   gameMode: z.enum(['ai', 'friend', 'online', 'bet']),
-  status: z.enum(['active', 'completed', 'abandoned']).default('active'),
+  status: z.enum(['active', 'completed', 'abandoned', 'draw', 'resigned', 'timeout']).default('active'),
   currentTurn: z.enum(['white', 'black']).default('white'),
   currentPosition: z.string().default('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'),
   moves: z.array(z.object({

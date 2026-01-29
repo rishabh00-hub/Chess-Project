@@ -105,19 +105,19 @@ class Storage implements IStorage {
     const game = await this.getGame(gameId);
     if (!game) throw new Error('Game not found');
     const engine = new ChessEngine(game.currentPosition);
-    const success = engine.move(move.from, move.to, move.promotion);
+    const moveObj = { from: move.from, to: move.to, piece: '', promotion: move.promotion };
+    const success = engine.makeMove(moveObj);
     if (!success) throw new Error('Invalid move');
-    const newFen = engine.fen();
+    const newFen = engine.exportFEN();
     const newMoves = [...game.moves, { from: move.from, to: move.to, fen: newFen }];
-    let status = game.status;
+    let status: 'active' | 'completed' | 'abandoned' | 'draw' | 'resigned' | 'timeout' = game.status as any;
     let winnerId = game.winnerId;
-    if (engine.isGameOver()) {
-      if (engine.isCheckmate()) {
-        status = 'completed';
-        winnerId = engine.turn() === 'w' ? game.blackPlayerId : game.whitePlayerId;
-      } else if (engine.isDraw()) {
-        status = 'draw';
-      }
+    const gameStatus = engine.getGameStatus();
+    if (gameStatus === 'checkmate') {
+      status = 'completed';
+      winnerId = engine.getTurn() === 'white' ? game.blackPlayerId : game.whitePlayerId;
+    } else if (gameStatus === 'draw' || gameStatus === 'stalemate') {
+      status = 'draw';
     }
     const updateData = {
       FEN: newFen,
