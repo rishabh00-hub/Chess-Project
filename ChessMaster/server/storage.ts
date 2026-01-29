@@ -55,20 +55,23 @@ class Storage implements IStorage {
       await zohoApi.updateUserProfile(user.id, user);
       return { ...existing, ...user };
     } else {
-      await zohoApi.updateUserProfile(user.id, user);
+      await zohoApi.createUserProfile(user);
       return { id: user.id, ...user } as User;
     }
   }
 
   // Game operations
   async createGame(game: InsertGame): Promise<Game> {
-    const result = await zohoApi.createGame(game);
-    return this.mapZohoGameToAppGame(result.data);
+    const result = await zohoApi.createGameRecord(game);
+    // Handle both direct data and wrapped response
+    const gameData = result.data?.[0] || result.data || result;
+    return this.mapZohoGameToAppGame(gameData);
   }
 
   async getGame(id: number): Promise<Game | undefined> {
     try {
       const data = await zohoApi.getGame(id.toString());
+      if (!data) return undefined;
       return this.mapZohoGameToAppGame(data);
     } catch {
       return undefined;
@@ -79,12 +82,14 @@ class Storage implements IStorage {
     const game = await this.getGame(id);
     if (!game) throw new Error('Game not found');
     const zohoUpdates: any = {};
-    if (updates.moves) zohoUpdates.moves = updates.moves;
-    if (updates.currentPosition) zohoUpdates.currentPosition = updates.currentPosition;
-    if (updates.status) zohoUpdates.status = updates.status;
-    if (updates.winnerId) zohoUpdates.winnerId = updates.winnerId;
-    await zohoApi.updateGame(id.toString(), zohoUpdates);
-    return { ...game, ...updates };
+    if (updates.moves) zohoUpdates.Moves_JSON = JSON.stringify(updates.moves);
+    if (updates.currentPosition) zohoUpdates.FEN = updates.currentPosition;
+    if (updates.status) zohoUpdates.Status = updates.status;
+    if (updates.winnerId) zohoUpdates.Winner = updates.winnerId;
+    const result = await zohoApi.updateGameRecord(id.toString(), zohoUpdates);
+    // Handle both direct data and wrapped response
+    const gameData = result.data?.[0] || result.data || result;
+    return this.mapZohoGameToAppGame(gameData || game);
   }
 
   async getUserGames(userId: string, limit?: number): Promise<Game[]> {
@@ -114,8 +119,15 @@ class Storage implements IStorage {
         status = 'draw';
       }
     }
-    await zohoApi.updateGame(gameId.toString(), { currentPosition: newFen, moves: newMoves, status, winnerId });
-    return { ...game, currentPosition: newFen, moves: newMoves, status, winnerId };
+    const updateData = {
+      FEN: newFen,
+      Moves_JSON: JSON.stringify(newMoves),
+      Status: status,
+      Winner: winnerId
+    };
+    const result = await zohoApi.updateGameRecord(gameId.toString(), updateData);
+    const gameData = result.data?.[0] || result.data || result;
+    return this.mapZohoGameToAppGame(gameData || game);
   }
 
   async resignGame(gameId: number, userId: string): Promise<Game> {

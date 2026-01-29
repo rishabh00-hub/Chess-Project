@@ -196,14 +196,41 @@ const exported = {
     return { success: true };
   },
 
-  // Get user profile from Zoho
+  // Get user profile from Zoho (returns first record from array)
   async getUserProfile(userId) {
     try {
       const path = `/User_Profiles/records/${encodeURIComponent(userId)}`;
       const result = await makeZohoApiRequest(path, 'GET');
-      return result?.data;
+      // Zoho returns an array; get the first item
+      return result?.data?.[0] || null;
     } catch (error) {
       console.error('Error fetching user profile:', error);
+      return null;
+    }
+  },
+
+  // Get user by username
+  async getUserByUsername(username) {
+    try {
+      const path = `/User_Profiles/records?criteria=(Username=="${encodeURIComponent(username)}")`;
+      const result = await makeZohoApiRequest(path, 'GET');
+      // Zoho returns an array; get the first item
+      return result?.data?.[0] || null;
+    } catch (error) {
+      console.error('Error fetching user by username:', error);
+      return null;
+    }
+  },
+
+  // Get user by Zoho ID
+  async getUserByZohoId(zohoId) {
+    try {
+      const path = `/User_Profiles/records/${encodeURIComponent(zohoId)}`;
+      const result = await makeZohoApiRequest(path, 'GET');
+      // Zoho returns an array; get the first item
+      return result?.data?.[0] || null;
+    } catch (error) {
+      console.error('Error fetching user by Zoho ID:', error);
       return null;
     }
   },
@@ -218,12 +245,75 @@ const exported = {
     return result;
   },
 
+  // Create a new user profile (registration)
+  async createUserProfile(profileData) {
+    const path = `/User_Profiles/records`;
+    const payload = { data: profileData };
+    const result = await makeZohoApiRequest(path, 'POST', payload);
+    return result;
+  },
+
   // Save Match Record (to 'Match_History' form)
   async saveMatchRecord(matchData) {
     const path = `/Match_History/records`;
     const payload = { data: matchData };
     const result = await makeZohoApiRequest(path, 'POST', payload);
     return result;
+  },
+
+  // Create Game Record (CREATE operation)
+  async createGameRecord(gameData) {
+    const path = `/Match_History/records`;
+    const payload = { data: gameData };
+    const result = await makeZohoApiRequest(path, 'POST', payload);
+    return result?.data?.[0] || result;
+  },
+
+  // Update Game Record (UPDATE operation)
+  async updateGameRecord(gameId, gameData) {
+    const path = `/Match_History/records/${encodeURIComponent(gameId)}`;
+    const payload = { data: gameData };
+    const result = await makeZohoApiRequest(path, 'PATCH', payload);
+    return result?.data?.[0] || result;
+  },
+
+  // Get a specific game record
+  async getGame(gameId) {
+    try {
+      const path = `/Match_History/records/${encodeURIComponent(gameId)}`;
+      const result = await makeZohoApiRequest(path, 'GET');
+      // Zoho returns an array; get the first item
+      return result?.data?.[0] || null;
+    } catch (error) {
+      console.error('Error fetching game:', error);
+      return null;
+    }
+  },
+
+  // Get recent games for a user
+  async getRecentGames(userId) {
+    try {
+      const path = `/Match_History/records?criteria=(White_Player=="${encodeURIComponent(userId)}" OR Black_Player=="${encodeURIComponent(userId)}")&sort_field=Date_Created&sort_order=desc`;
+      const result = await makeZohoApiRequest(path, 'GET');
+      // Zoho returns an array of records
+      return result?.data || [];
+    } catch (error) {
+      console.error('Error fetching recent games:', error);
+      return [];
+    }
+  },
+
+  // Get leaderboard (all users sorted by Elo)
+  async getLeaderboard() {
+    try {
+      const path = `/User_Profiles/records?sort_field=Elo&sort_order=desc`;
+      const result = await makeZohoApiRequest(path, 'GET');
+      // Zoho returns an array of user records
+      return result?.data || [];
+    } catch (error) {
+      console.error('Error fetching leaderboard:', error);
+      return [];
+    }
   },
 
   // Fetch User Rank (optional, for leaderboard)
