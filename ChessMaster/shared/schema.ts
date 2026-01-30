@@ -16,6 +16,7 @@ export interface User {
   level: number;
   xp: number;
   totalPoints: number;
+  elo: number;
   gamesPlayed: number;
   wins: number;
   losses: number;
@@ -33,7 +34,7 @@ export interface Game {
   whitePlayerId: string;
   blackPlayerId: string;
   winnerId?: string;
-  gameMode: 'ai' | 'friend' | 'online' | 'bet';
+  gameMode: 'ai' | 'friend' | 'online';
   status: 'active' | 'completed' | 'abandoned' | 'draw' | 'resigned' | 'timeout';
   result?: 'white_wins' | 'black_wins' | 'draw' | 'resignation';
   currentTurn: 'white' | 'black';
@@ -42,7 +43,6 @@ export interface Game {
   moveHistory: string;
   halfMoveClock: number;
   fullMoveNumber: number;
-  betAmount: number;
   aiDifficulty?: 'easy' | 'medium' | 'hard';
   timeControl?: { initial: number; increment: number };
   whiteTimeRemaining?: number;
@@ -80,7 +80,7 @@ export interface UserLessonProgress {
 export const insertGameSchema = z.object({
   whitePlayerId: z.string(),
   blackPlayerId: z.string(),
-  gameMode: z.enum(['ai', 'friend', 'online', 'bet']),
+  gameMode: z.enum(['ai', 'friend', 'online']),
   status: z.enum(['active', 'completed', 'abandoned', 'draw', 'resigned', 'timeout']).default('active'),
   currentTurn: z.enum(['white', 'black']).default('white'),
   currentPosition: z.string().default('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'),
@@ -92,7 +92,6 @@ export const insertGameSchema = z.object({
   moveHistory: z.string().default(''),
   halfMoveClock: z.number().default(0),
   fullMoveNumber: z.number().default(1),
-  betAmount: z.number().default(0),
   aiDifficulty: z.enum(['easy', 'medium', 'hard']).optional(),
   timeControl: z.object({
     initial: z.number(),

@@ -97,7 +97,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Real game creation route
   app.post('/api/games', async (req: any, res) => {
     try {
-      const { whitePlayerId, blackPlayerId, gameMode, aiDifficulty, betAmount } = req.body;
+      const { whitePlayerId, blackPlayerId, gameMode, aiDifficulty } = req.body;
       if (!whitePlayerId || !gameMode) {
         return res.status(400).json({ message: "Missing required fields: whitePlayerId, gameMode" });
       }
@@ -106,8 +106,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         blackPlayerId: blackPlayerId || null,
         gameMode,
         status: 'active',
-        aiDifficulty: aiDifficulty || null,
-        betAmount: betAmount || 0
+        aiDifficulty: aiDifficulty || null
       };
       const game = await storage.createGame(gameData);
       res.json(game);

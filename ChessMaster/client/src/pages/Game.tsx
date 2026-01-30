@@ -111,7 +111,6 @@ export default function Game() {
       case 'ai': return `vs AI ${game.aiDifficulty ? `(${game.aiDifficulty})` : ''}`;
       case 'friend': return 'vs Friend';
       case 'online': return 'Online Match';
-      case 'bet': return `Bet Match (${game.betAmount} pts)`;
       default: return game.gameMode;
     }
   };

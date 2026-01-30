@@ -9,7 +9,6 @@ import {
   Bot, 
   Users, 
   Globe, 
-  Coins,
   Loader2
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
@@ -18,7 +17,7 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { useEffect } from "react";
 import type { Game } from "@shared/schema";
 
-type GameMode = 'ai' | 'friend' | 'online' | 'bet';
+type GameMode = 'ai' | 'friend' | 'online';
 
 export default function Play() {
   const { user, isLoading } = useAuth();
@@ -131,14 +130,6 @@ export default function Play() {
       icon: Globe,
       bgColor: 'bg-emerald-500',
       cardStyle: 'bg-slate-800 hover:bg-slate-700 border-slate-600'
-    },
-    {
-      id: 'bet' as GameMode,
-      title: 'Bet Matches',
-      description: 'Wager points for bigger rewards',
-      icon: Coins,
-      bgColor: 'bg-black/20',
-      cardStyle: 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600'
     }
   ];
 
@@ -174,9 +165,7 @@ export default function Play() {
                       </div>
                       <div>
                         <h3 className="font-semibold">{mode.title}</h3>
-                        <p className={`text-sm ${
-                          mode.id === 'bet' ? 'text-yellow-100' : 'text-slate-400'
-                        }`}>
+                        <p className="text-sm text-slate-400">
                           {mode.description}
                         </p>
                       </div>
@@ -200,7 +189,7 @@ export default function Play() {
                 {selectedMode === 'ai' ? 'Preparing AI opponent' :
                  selectedMode === 'friend' ? 'Waiting for friend to join' :
                  selectedMode === 'online' ? 'Searching for players at your level' :
-                 'Finding worthy opponent for bet match'}
+                 'Finding opponent...'}
               </p>
               <Button 
                 variant="destructive"

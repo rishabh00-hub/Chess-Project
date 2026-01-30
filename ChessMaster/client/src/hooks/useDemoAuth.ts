@@ -7,8 +7,9 @@ export function useDemoAuth() {
     lastName: "Master",
     profileImageUrl: null,
     level: 8,
-    xp: 7250,
-    totalPoints: 1420,
+    xp: 7250, // Keep for compatibility
+    totalPoints: 1420, // Keep for compatibility
+    elo: 1650,
     gamesPlayed: 156,
     wins: 89,
     losses: 42,
