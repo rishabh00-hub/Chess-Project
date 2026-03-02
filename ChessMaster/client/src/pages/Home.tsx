@@ -21,11 +21,7 @@ export default function Home() {
     // Construct Zoho OAuth2 URL
     const clientId = import.meta.env.VITE_ZOHO_CLIENT_ID;
     console.log("Client ID:", clientId);
-    const isMobile = window.Capacitor; 
-    // Check if running in App
-    const redirectUri = encodeURIComponent(
-      isMobile ? "chessmaster://callback" : window.location.origin + "/auth/callback"
-      );
+    const redirectUri = encodeURIComponent(import.meta.env.VITE_ZOHO_REDIRECT_URI);
     const scope = encodeURIComponent("ZohoCreator.user.CREATE ZohoCreator.user.READ");
     const responseType = "code";
     const authUrl = `https://accounts.zoho.com/oauth/v2/auth?scope=${scope}&client_id=${clientId}&response_type=${responseType}&access_type=offline&redirect_uri=${redirectUri}`;
@@ -231,9 +227,7 @@ export default function Home() {
 
       {/* Lower Section */}
       {/* Removed Referral System, Daily Tasks, and Latest Updates for production cleanup */}
-    
-    {/* Bottom Navigation should be outside the main content wrapper */}
-    <BottomNavigation/>
+      <BottomNavigation/>
     </div>
     );
   }

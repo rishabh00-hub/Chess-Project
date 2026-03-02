@@ -9,6 +9,7 @@ const __dirname = dirname(__filename);
 
 export default defineConfig({
   root: path.resolve(__dirname, "./client"),
+  envDir: "../",
   plugins: [react()],
   resolve: {
     alias: {
