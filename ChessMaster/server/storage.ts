@@ -73,8 +73,7 @@ class Storage implements IStorage {
   async createGame(game: InsertGame): Promise<Game> {
     const result = await zohoApi.createGameRecord(game);
     // Handle both direct data and wrapped response
-    const gameData = result.data?.[0] || result.data || result;
-    return this.mapZohoGameToAppGame(gameData);
+    return this.mapZohoGameToAppGame(result);
   }
 
   async getGame(id: number): Promise<Game | undefined> {

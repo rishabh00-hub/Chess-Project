@@ -41,32 +41,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Primary user profile route
   app.get('/api/me', async (req: any, res) => {
     try {
-      // FIX 3: Handle server restarts by awaiting the auth check
       const isLoggedIn = await zohoApi.ensureAuthenticated();
-
-      if (isLoggedIn) {
-        // Use the requested ID, or fallback to 'default_player' only if necessary
-        const userId = req.query.userId || "default_player";
-          
-        let user = await storage.getUser(userId);
-          
-        // FIX 4: NO MORE AMNESIA. If user is missing, CREATE and SAVE them immediately.
-        if (!user) {
-          console.log(`🆕 First time login for: ${userId}. Saving to DB...`);
-          user = await storage.upsertUser({
-            id: userId,
-            username: userId === "default_player" ? "Chess Master" : userId,
-            elo: 1200
-          });
-        }
-        return res.json(user);
+      if (!isLoggedIn) {
+        return res.status(401).json(null);
       }
-      
-      // Not logged in
-      res.json(null);
+      const userId = req.query.userId;
+      if (!userId) {
+        return res.status(401).json(null);
+      }
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(401).json(null);
+      }
+      return res.json(user);
     } catch (error) {
       console.error("Auth/Profile Error:", error);
-      res.json(null);
+      res.status(401).json(null);
     }
   });
 
@@ -113,6 +103,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error creating game:", error);
       res.status(500).json({ message: "Failed to create game" });
+    }
+  });
+
+  // Real logout route
+  app.get('/api/logout', async (req, res) => {
+    try {
+      zohoApi.logout();
+      res.redirect('/');
+    } catch (error) {
+      console.error('Logout error:', error);
+      res.status(500).json({ message: 'Logout failed' });
     }
   });
 

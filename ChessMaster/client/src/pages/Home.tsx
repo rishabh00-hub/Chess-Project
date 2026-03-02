@@ -13,13 +13,19 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import AnimatedCounter from "@/components/AnimatedCounter";
+import BottomNavigation from "@/components/BottomNavigation";
 
 export default function Home() {
   // Initiate Zoho OAuth2 login redirect
   const handleZohoLogin = () => {
     // Construct Zoho OAuth2 URL
-    const clientId = "1000.2U8KXHE166LN9QF7UOOQWP9RPAT6BR";
-    const redirectUri = encodeURIComponent("chessmaster://callback");
+    const clientId = import.meta.env.VITE_ZOHO_CLIENT_ID;
+    console.log("Client ID:", clientId);
+    const isMobile = window.Capacitor; 
+    // Check if running in App
+    const redirectUri = encodeURIComponent(
+      isMobile ? "chessmaster://callback" : window.location.origin + "/auth/callback"
+      );
     const scope = encodeURIComponent("ZohoCreator.user.CREATE ZohoCreator.user.READ");
     const responseType = "code";
     const authUrl = `https://accounts.zoho.com/oauth/v2/auth?scope=${scope}&client_id=${clientId}&response_type=${responseType}&access_type=offline&redirect_uri=${redirectUri}`;
@@ -202,7 +208,7 @@ export default function Home() {
                           <ResultIcon className="text-white" size={12} />
                         </div>
                         <div>
-                          <p className="font-medium text-sm">vs. AI</p>
+                          <p className="font-medium text-sm">vs. {game.blackPlayerId === user?.id ? game.whitePlayerId : game.blackPlayerId || 'Opponent'}</p>
                           <p className="text-slate-400 text-xs">
                             {new Date(game.createdAt).toLocaleDateString()}
                           </p>
@@ -224,75 +230,10 @@ export default function Home() {
       </div>
 
       {/* Lower Section */}
-      <div className="px-4 space-y-4">
-        {/* Updates Panel */}
-        <Card className="bg-slate-800 border-slate-700">
-          <CardContent className="p-4">
-            <h3 className="font-semibold mb-3 flex items-center">
-              <Bell className="text-blue-400 mr-2" size={16} />
-              Latest Updates
-            </h3>
-            <div className="space-y-2">
-              <p className="text-sm text-slate-300">🎉 New tournament mode available!</p>
-              <p className="text-sm text-slate-300">⚡ Improved AI difficulty levels</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Referral System */}
-        <Card className="bg-gradient-to-r from-purple-600 to-purple-700 border-0">
-          <CardContent className="p-4">
-            <h3 className="font-semibold mb-2">Invite Friends</h3>
-            <p className="text-purple-100 text-sm mb-3">Get 100 XP for each friend who joins!</p>
-            <div className="flex space-x-2">
-              <input 
-                type="text" 
-                value="CHESS2024" 
-                readOnly 
-                className="flex-1 bg-black/30 rounded-lg px-3 py-2 text-sm text-white"
-              />
-              <Button 
-                onClick={copyReferralCode}
-                className="bg-white text-purple-600 hover:bg-purple-50"
-              >
-                Copy
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Task System */}
-        <Card className="bg-slate-800 border-slate-700">
-          <CardContent className="p-4">
-            <h3 className="font-semibold mb-3 flex items-center justify-between">
-              Daily Tasks
-              <span className="text-sm text-slate-400">2/3 Complete</span>
-            </h3>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Win 2 games</p>
-                  <Progress value={100} className="h-1.5 mt-1" />
-                </div>
-                <Button 
-                  size="sm" 
-                  className="ml-3 bg-emerald-500 hover:bg-emerald-600 text-white h-8 px-3"
-                >
-                  Claim
-                </Button>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Play 5 games</p>
-                  <Progress value={60} className="h-1.5 mt-1" />
-                </div>
-                <span className="ml-3 text-slate-400 text-xs">3/5</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Removed Referral System, Daily Tasks, and Latest Updates for production cleanup */}
+    
+    {/* Bottom Navigation should be outside the main content wrapper */}
+    <BottomNavigation/>
     </div>
-  );
-}
+    );
+  }

@@ -1,5 +1,7 @@
 // zoho-api-service.js
 import SecureStorage from './secureStorage.js';
+import fs from 'fs';
+import nodeFetch from 'node-fetch';
 
 // Initialize secure storage
 const secureStorage = new SecureStorage(
@@ -25,7 +27,7 @@ const FORM_GAME = "Match_History";
 // === Placeholder for OAuth2 Token Management ===
 let accessToken = null;
 
-const fetch = global.fetch || require('node-fetch');
+const fetch = global.fetch || nodeFetch;
 
 function buildFormUrlEncoded(obj) {
   return Object.keys(obj)
@@ -166,6 +168,7 @@ async function makeZohoApiRequest(urlPath, method = 'GET', data = null) {
 })();
 
 // === API Functions ===
+
 const exported = {
   // Check if we have a valid access token
   isAuthenticated() {
@@ -253,14 +256,6 @@ const exported = {
     return result;
   },
 
-  // Save Match Record (to 'Match_History' form)
-  async saveMatchRecord(matchData) {
-    const path = `/Match_History/records`;
-    const payload = { data: matchData };
-    const result = await makeZohoApiRequest(path, 'POST', payload);
-    return result;
-  },
-
   // Create Game Record (CREATE operation)
   async createGameRecord(gameData) {
     const path = `/Match_History/records`;
@@ -322,6 +317,22 @@ const exported = {
     const record = await makeZohoApiRequest(path, 'GET');
     // Example: assume the record contains a 'rank' field
     return { success: true, rank: record.data?.rank ?? null, userId };
+  },
+
+  // Real logout implementation
+  logout() {
+    accessToken = null;
+    try {
+      secureStorage.clear('zoho_refresh_token');
+      // Also try to delete the file directly for safety
+      const tokenPath = process.env.SECURE_STORAGE_PATH || './.secure-storage/zoho_refresh_token.json';
+      if (fs.existsSync(tokenPath)) {
+        fs.unlinkSync(tokenPath);
+      }
+    } catch (err) {
+      console.warn('Failed to clear Zoho refresh token:', err);
+    }
+    return true;
   }
 };
 
