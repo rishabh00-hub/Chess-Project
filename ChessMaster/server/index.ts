@@ -2,8 +2,21 @@
 import 'dotenv/config';
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
+import session from 'express-session';
+import MemoryStoreFactory from 'memorystore';
 import { registerRoutes } from "./routes.js";
 import { setupVite, serveStatic, log } from "./vite.js";
+
+const MemoryStore = MemoryStoreFactory(session);
+
+// Extend Express Session to include userId
+declare global {
+  namespace Express {
+    interface Session {
+      userId?: string;
+    }
+  }
+}
 
 const app = express();
 app.set('trust proxy', 1); // Required for correct protocol detection (http vs https)
@@ -30,6 +43,19 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Session middleware setup
+app.use(session({
+  store: new MemoryStore({ checkPeriod: 86400000 }),
+  secret: process.env.SESSION_SECRET || 'chessmaster-secret-key-123',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: true, // Required for Codespaces (HTTPS)
+    sameSite: 'none', // Required for cross-origin
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
 
 // Basic request logging middleware
 app.use((req, res, next) => {

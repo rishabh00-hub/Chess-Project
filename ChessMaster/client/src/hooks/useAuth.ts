@@ -4,7 +4,9 @@ export function useAuth() {
   const { data: user, isLoading } = useQuery({
     queryKey: ["/api/me"],
     queryFn: async () => {
-      const response = await fetch("/api/me");
+      const response = await fetch("/api/me", {
+        credentials: 'include' // Send session cookie with request
+      });
       if (!response.ok) {
         throw new Error('Network response was not ok');
       }
@@ -19,3 +21,4 @@ export function useAuth() {
     isAuthenticated: !!user,
   };
 }
+

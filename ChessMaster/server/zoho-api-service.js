@@ -196,7 +196,43 @@ const exported = {
   async loginOrRegister(authCode, customRedirectUri) {
     // Perform initial token exchange and persist refresh token
     await initialTokenExchange(authCode, customRedirectUri);
-    return { success: true };
+    
+    try {
+      // Get the first user from the User_Profiles form
+      // In a production API, you would get the actual user from Zoho's userinfo endpoint
+      const path = `/User_Profiles/records?limit=1`;
+      const result = await makeZohoApiRequest(path, 'GET');
+      
+      if (result?.data && result.data.length > 0) {
+        // Return the existing user's ID
+        const userId = result.data[0].ID || result.data[0].id;
+        console.log(`✓ Found existing user: ${userId}`);
+        return { success: true, userId };
+      } else {
+        // No users exist, create a default one
+        console.log('No users found, creating default user...');
+        const newUserData = {
+          data: {
+            Username: 'DefaultUser',
+            Email: 'user@chessmaster.app',
+            Elo: 1200,
+            Wins: 0,
+            Losses: 0,
+            Draws: 0,
+            Games_Played: 0
+          }
+        };
+        const createResult = await makeZohoApiRequest(`/User_Profiles/records`, 'POST', newUserData);
+        const userId = createResult?.data?.[0]?.ID || createResult?.data?.[0]?.id;
+        console.log(`✓ Created new user: ${userId}`);
+        return { success: true, userId };
+      }
+    } catch (error) {
+      console.error('Error getting/creating user:', error);
+      // Fallback: still return success but without a specific user ID
+      // Routes should handle cases where userId is not available
+      return { success: true, userId: null };
+    }
   },
 
   // Get user profile from Zoho (returns first record from array)

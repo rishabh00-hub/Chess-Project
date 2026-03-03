@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { useQuery } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -29,6 +31,17 @@ export default function Home() {
   };
   const { user, isLoading } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Handle login=success redirect
+  useEffect(() => {
+    if (window.location.search.includes('login=success')) {
+      // Invalidate the /api/me query to force a refetch with the new session
+      queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+      // Clear the URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [queryClient]);
 
   const { data: recentGames = [] } = useQuery({
     queryKey: ["/api/games/user/recent"],

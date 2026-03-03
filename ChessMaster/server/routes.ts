@@ -45,10 +45,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!isLoggedIn) {
         return res.status(401).json(null);
       }
-      const userId = req.query.userId;
+      
+      // Read userId from session instead of query parameters
+      const userId = req.session?.userId;
       if (!userId) {
+        console.warn('No userId in session');
         return res.status(401).json(null);
       }
+      
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(401).json(null);
@@ -275,8 +279,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`🔗 Exchanging Code. URI: ${currentRedirectUri}`);
 
         // FIX 2: Pass the URI to the service so Zoho accepts the handshake
-        await zohoApi.loginOrRegister(code.toString(), currentRedirectUri);
+        const authResult = await zohoApi.loginOrRegister(code.toString(), currentRedirectUri);
         console.log("✅ Zoho Auth Successful. Token stored.");
+        
+        // Save the userId to the session
+        if (authResult.userId) {
+          (req.session as any).userId = authResult.userId;
+          console.log(`📌 Session userId set to: ${authResult.userId}`);
+        }
       }
       res.redirect('/?login=success'); 
     } catch (error) {
