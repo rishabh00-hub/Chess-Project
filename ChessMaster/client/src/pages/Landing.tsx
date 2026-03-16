@@ -13,7 +13,7 @@ export default function Landing() {
     }
 
     const redirectUri = encodeURIComponent(window.location.origin + "/api/callback");
-    const scope = encodeURIComponent("ZohoCreator.user.CREATE ZohoCreator.user.READ");
+    const scope = encodeURIComponent("AaaServer.profile.READ,ZohoCreator.data.CREATE,ZohoCreator.data.READ,ZohoCreator.data.UPDATE");
     const responseType = "code";
     const authUrl = `https://accounts.zoho.in/oauth/v2/auth?scope=${scope}&client_id=${clientId}&response_type=${responseType}&access_type=offline&redirect_uri=${redirectUri}`;
     window.location.href = authUrl;

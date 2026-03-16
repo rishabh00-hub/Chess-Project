@@ -270,25 +270,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/callback', async (req, res) => {
     try {
       const { code } = req.query;
-      if (code) {
-        // FIX 1: Construct the EXACT redirect URI dynamically to support HTTPS/Codespaces
-        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-        const host = req.headers['x-forwarded-host'] || req.get('host');
-        const currentRedirectUri = `${protocol}://${host}/api/callback`;
-          
-        console.log(`🔗 Exchanging Code. URI: ${currentRedirectUri}`);
+      if (!code) {
+        console.warn("⚠️ No authorization code provided");
+        return res.redirect('/?error=no_code');
+      }
 
-        // FIX 2: Pass the URI to the service so Zoho accepts the handshake
-        const authResult = await zohoApi.loginOrRegister(code.toString(), currentRedirectUri);
-        console.log("✅ Zoho Auth Successful. Token stored.");
+      // FIX 1: Construct the EXACT redirect URI dynamically to support HTTPS/Codespaces
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.headers['x-forwarded-host'] || req.get('host');
+      const currentRedirectUri = `${protocol}://${host}/api/callback`;
         
-        // Save the userId to the session
-        if (authResult.userId) {
-          (req.session as any).userId = authResult.userId;
-          console.log(`📌 Session userId set to: ${authResult.userId}`);
+      console.log(`🔗 Exchanging Code. URI: ${currentRedirectUri}`);
+
+      // FIX 2: Pass the URI to the service so Zoho accepts the handshake
+      const authResult = await zohoApi.loginOrRegister(code.toString(), currentRedirectUri);
+      console.log("✅ Zoho Auth Successful. Token stored.");
+
+      // CRITICAL FIX: Enforce valid database user creation
+      let userId: string | undefined;
+
+      // If Zoho returned a userId, use it
+      if (authResult?.userId) {
+        userId = authResult.userId;
+        console.log(`✓ Using userId from Zoho auth: ${userId}`);
+      } else {
+        console.warn("⚠️ No userId from Zoho auth, creating new user in database...");
+        
+        // If Zoho didn't return a userId, forcefully create one in the database
+        try {
+          const newUserId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const username = `Player_${Math.floor(Math.random() * 10000)}`;
+          
+          const newUser = await storage.upsertUser({
+            id: newUserId,
+            username: username,
+            email: `${username}@chessmaster.app`,
+            level: 1,
+            xp: 0,
+            totalPoints: 0,
+            elo: 1200,
+            gamesPlayed: 0,
+            wins: 0,
+            losses: 0,
+            draws: 0,
+            resignations: 0,
+            currentStreak: 0,
+            bestStreak: 0,
+            tutorialProgress: 0,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+          
+          if (newUser && newUser.id) {
+            // If we generated a temp id earlier, log the Zoho-assigned ID for clarity
+            if (newUser.id !== newUserId) {
+              console.log(`✓ Created new database user (Zoho id ${newUser.id}, local id ${newUserId})`);
+            } else {
+              console.log(`✓ Created new database user: ${newUser.id}`);
+            }
+            userId = newUser.id;
+          } else {
+            console.error("❌ User creation returned invalid user object", newUser);
+            throw new Error("User creation returned invalid user object");
+          }
+        } catch (dbErr) {
+          console.error("❌ DB User Creation Error:", dbErr);
+          return res.redirect('/?error=user_creation_failed');
         }
       }
-      res.redirect('/?login=success'); 
+
+      // CRITICAL: Check if userId is valid before setting session
+      if (!userId) {
+        console.error("❌ Critical Error: No valid userId available after all attempts");
+        return res.redirect('/?error=no_valid_user_id');
+      }
+
+      // CRITICAL FIX: Assign userId to session and explicitly save before redirecting
+      (req.session as any).userId = userId;
+      console.log(`📌 Session userId set to: ${userId}`);
+      
+      // CRITICAL: Explicitly save session before redirecting to ensure cookie is set
+      req.session.save((err) => {
+        if (err) {
+          console.error("❌ Session save error:", err);
+          return res.redirect('/?error=session_failed');
+        }
+        console.log("✓ Session saved successfully");
+        res.redirect('/?login=success');
+      });
     } catch (error) {
       console.error("❌ Login Handshake Failed:", error);
       res.redirect('/?error=auth_failed_check_logs');

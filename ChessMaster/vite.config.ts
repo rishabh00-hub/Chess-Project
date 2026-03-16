@@ -31,6 +31,8 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         ws: true,
+        // fix for Codespaces cookies: rewrite domain so browser accepts Set-Cookie
+        cookieDomainRewrite: {"*": ""},
         configure: (proxy) => {
           proxy.on('error', (err) => {
             console.error('Proxy error:', err);

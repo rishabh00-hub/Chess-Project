@@ -27,18 +27,19 @@ class Storage implements IStorage {
 
   // Helper to map Zoho user data to app User object
   private mapZohoUserToAppUser(zohoData: any): User {
+    // Map new Zoho Creator field names to app User type
     return {
-      id: zohoData.ID,
-      username: zohoData.Username,
-      email: zohoData.Email,
-      elo: zohoData.Elo,
-      wins: zohoData.Wins,
-      losses: zohoData.Losses,
-      draws: zohoData.Draws,
-      totalPoints: zohoData.Total_Points,
+      id: zohoData.ID || zohoData.id,
+      username: zohoData.username || '',
+      email: zohoData.email || '',
+      elo: zohoData.chess_rating ?? 1200,
+      wins: zohoData.total_wins ?? 0,
+      losses: zohoData.total_losses ?? 0,
+      draws: zohoData.total_draws ?? 0,
+      totalPoints: (zohoData.total_wins ?? 0) * 3 + (zohoData.total_draws ?? 0), // Win = 3 points, Draw = 1 point
       level: 1, // Default level
       xp: 0, // Keep for Zoho compatibility but don't update
-      gamesPlayed: (zohoData.Wins || 0) + (zohoData.Losses || 0) + (zohoData.Draws || 0),
+      gamesPlayed: zohoData.total_game_played ?? 0,
       resignations: 0,
       currentStreak: 0,
       bestStreak: 0,
@@ -59,13 +60,27 @@ class Storage implements IStorage {
   }
 
   async upsertUser(user: UpsertUser): Promise<User> {
+    // Attempt to look up by the provided id (which may or may not be a Zoho ID).
     const existing = await this.getUser(user.id);
     if (existing) {
+      // If record already exists in Zoho we simply patch it and return a merged object.
       await zohoApi.updateUserProfile(user.id, user);
       return { ...existing, ...user };
     } else {
-      await zohoApi.createUserProfile(user);
-      return { id: user.id, ...user } as User;
+      // Create a new user in Zoho and validate that the API actually returned an ID.
+      const result = await zohoApi.createUserProfile(user);
+      const zohoId = result?.data?.[0]?.ID || result?.data?.[0]?.id;
+      if (!zohoId) {
+        console.error('ZOHO DB INSERT ERROR (no ID in response):', result);
+        throw new Error('Failed to save user to Zoho DB');
+      }
+      // Fetch the freshly created record to ensure we have all fields mapped correctly.
+      const created = await this.getUser(zohoId);
+      if (!created) {
+        console.error('ZOHO DB INSERT ERROR (could not retrieve created user):', result);
+        throw new Error('Zoho returned ID but record could not be fetched');
+      }
+      return created;
     }
   }
 
@@ -226,19 +241,21 @@ class Storage implements IStorage {
       gamesPlayed: blackPlayer.gamesPlayed + 1,
     };
 
-    // Update both players in Zoho
+    // Update both players in Zoho using new field names
     await zohoApi.updateUserProfile(game.whitePlayerId, {
-      Elo: whiteUpdates.elo,
-      Wins: whiteUpdates.wins,
-      Losses: whiteUpdates.losses,
-      Draws: whiteUpdates.draws,
+      chess_rating: whiteUpdates.elo,
+      total_wins: whiteUpdates.wins,
+      total_losses: whiteUpdates.losses,
+      total_draws: whiteUpdates.draws,
+      total_game_played: whiteUpdates.gamesPlayed,
     });
 
     await zohoApi.updateUserProfile(game.blackPlayerId, {
-      Elo: blackUpdates.elo,
-      Wins: blackUpdates.wins,
-      Losses: blackUpdates.losses,
-      Draws: blackUpdates.draws,
+      chess_rating: blackUpdates.elo,
+      total_wins: blackUpdates.wins,
+      total_losses: blackUpdates.losses,
+      total_draws: blackUpdates.draws,
+      total_game_played: blackUpdates.gamesPlayed,
     });
   }
 

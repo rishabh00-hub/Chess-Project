@@ -51,7 +51,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: true, // Required for Codespaces (HTTPS)
+    secure: true, // Works because trust proxy is set above
     sameSite: 'none', // Required for cross-origin
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
@@ -76,7 +76,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 async function main() {
-  const port = process.env.PORT || 5000; // Backend running on port 5000
+  const port = Number(process.env.PORT) || 5000; // Backend running on port 5000
 
   // Register API routes
   const httpServer = await registerRoutes(app);

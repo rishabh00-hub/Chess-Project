@@ -3,26 +3,52 @@ import SecureStorage from './secureStorage.js';
 import fs from 'fs';
 import nodeFetch from 'node-fetch';
 
-// Initialize secure storage
+// === FAIL-FAST VALIDATION: Ensure all critical Zoho environment variables are set ===
+// These must be configured in .env — no fallbacks allowed
+if (!process.env.ZOHO_OWNER_NAME || !process.env.ZOHO_APP_NAME || 
+    !process.env.ZOHO_USER_FORM_NAME || !process.env.ZOHO_USER_REPORT_NAME ||
+    !process.env.ZOHO_GAME_FORM_NAME || !process.env.ZOHO_GAME_REPORT_NAME ||
+    !process.env.ZOHO_CLIENT_ID || !process.env.ZOHO_CLIENT_SECRET) {
+  console.error('CRITICAL ERROR: Missing required Zoho environment variables!');
+  console.error('Please ensure the following are configured in your .env file:');
+  console.error('  - ZOHO_CLIENT_ID');
+  console.error('  - ZOHO_CLIENT_SECRET');
+  console.error('  - ZOHO_REDIRECT_URI');
+  console.error('  - ZOHO_OWNER_NAME');
+  console.error('  - ZOHO_APP_NAME');
+  console.error('  - ZOHO_USER_FORM_NAME');
+  console.error('  - ZOHO_USER_REPORT_NAME');
+  console.error('  - ZOHO_GAME_FORM_NAME');
+  console.error('  - ZOHO_GAME_REPORT_NAME');
+  throw new Error('Zoho API: Missing or incomplete environment variables. Please check your .env file.');
+}
+
+// Initialize secure storage (these are optional, use defaults if not set)
 const secureStorage = new SecureStorage(
   process.env.SECURE_STORAGE_KEY || 'default-key',
   process.env.SECURE_STORAGE_PATH || './.secure-storage'
 );
 
-// === ZOHO CREATOR API KEYS (Read from environment variables) ===
+// === ZOHO CREATOR API KEYS (Read from environment variables - STRICTLY) ===
 const ZOHO_CLIENT_ID = process.env.ZOHO_CLIENT_ID;
 const ZOHO_CLIENT_SECRET = process.env.ZOHO_CLIENT_SECRET;
-const ZOHO_REDIRECT_URI = process.env.ZOHO_REDIRECT_URI || "http://127.0.0.1:8000";
+const ZOHO_REDIRECT_URI = process.env.ZOHO_REDIRECT_URI;
 
 // === ZOHO CREATOR API ENDPOINTS (India DC) ===
-const ZOHO_BASE_URL = "https://creator.zoho.in/api/v2/Chess%20Database/form";
+// Build dynamic base URL using environment variables (STRICTLY)
+const ZOHO_OWNER_NAME = process.env.ZOHO_OWNER_NAME;
+const ZOHO_APP_NAME = process.env.ZOHO_APP_NAME;
+const ZOHO_BASE_URL = 'https://www.zohoapis.in/creator/v2.1';
 
 // OAuth token endpoint (India DC)
 const ZOHO_OAUTH_TOKEN_URL = "https://accounts.zoho.in/oauth/v2/token";
 
-// Form names
-const FORM_USER = "User_Profiles";
-const FORM_GAME = "Match_History";
+// Form and Report names from environment variables (must match exactly their Link Names in Zoho Creator)
+// These are REQUIRED — no defaults/fallbacks allowed
+const ZOHO_USER_FORM_NAME = process.env.ZOHO_USER_FORM_NAME;
+const ZOHO_USER_REPORT_NAME = process.env.ZOHO_USER_REPORT_NAME;
+const ZOHO_GAME_FORM_NAME = process.env.ZOHO_GAME_FORM_NAME;
+const ZOHO_GAME_REPORT_NAME = process.env.ZOHO_GAME_REPORT_NAME;
 
 // === Placeholder for OAuth2 Token Management ===
 let accessToken = null;
@@ -99,43 +125,103 @@ async function refreshAccessToken() {
   return data;
 }
 
-// Generic request helper that retries once on 401
-async function makeZohoApiRequest(urlPath, method = 'GET', data = null) {
+// Fetch authenticated user's info from Zoho OAuth endpoint
+async function fetchZohoUserInfo() {
   if (!accessToken) {
-    await refreshAccessToken().catch(err => {
-      // Propagate error to caller
-      throw err;
-    });
+    throw new Error('No access token available for user info fetch');
   }
 
-  const url = ZOHO_BASE_URL + urlPath;
+  const userInfoUrl = 'https://accounts.zoho.in/oauth/user/info';
   const headers = {
     'Authorization': `Zoho-oauthtoken ${accessToken}`,
-    'Content-Type': 'application/json',
   };
 
-  const opts = {
-    method,
+  const res = await fetch(userInfoUrl, {
+    method: 'GET',
     headers,
-  };
-  if (data) opts.body = JSON.stringify(data);
+  });
 
-  let res = await fetch(url, opts);
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Failed to fetch Zoho user info (${res.status}): ${errText}`);
+  }
+
+  const data = await res.json();
+  return data; // Returns object with first_name, last_name, email, etc.
+}
+
+// Generic helper to ensure we have a valid access token.
+// This aligns with the exported ensureAuthenticated() method.
+async function ensureAuthenticated() {
+  if (accessToken) return true;
+  try {
+    await refreshAccessToken();
+    return !!accessToken;
+  } catch (error) {
+    return false;
+  }
+}
+
+// Generic request helper that retries once on 401
+async function makeZohoApiRequest(urlPath, method = 'GET', body = null) {
+  await ensureAuthenticated();
+
+  const owner = process.env.ZOHO_OWNER_NAME;
+  const app = process.env.ZOHO_APP_NAME;
+
+  // Clean the path to prevent double slashes
+  const cleanPath = urlPath.startsWith('/') ? urlPath.substring(1) : urlPath;
+
+  // 100% CORRECT URL for Zoho India DC API v2.1
+  const url = `https://www.zohoapis.in/creator/v2.1/data/${owner}/${app}/${cleanPath}`;
+
+  const options = {
+    method,
+    headers: {
+      'Authorization': `Zoho-oauthtoken ${accessToken}`,
+      'Content-Type': 'application/json',
+      'environment': 'development' // Explicitly targeting the draft environment
+    }
+  };
+
+  if (body) {
+    options.body = JSON.stringify(body);
+  }
+
+  console.log(`🚀 Sending ${method} request to: ${url}`);
+  let res = await nodeFetch(url, options);
 
   if (res.status === 401) {
     // Try refreshing token and retry once
     await refreshAccessToken();
-    opts.headers['Authorization'] = `Zoho-oauthtoken ${accessToken}`;
-    res = await fetch(url, opts);
+    options.headers['Authorization'] = `Zoho-oauthtoken ${accessToken}`;
+    res = await nodeFetch(url, options);
     if (res.status === 401) {
       const text = await res.text();
       throw new Error(`Unauthorized after retry: ${text}`);
     }
   }
 
+  // Fail fast if Zoho returned an error status other than 401
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Zoho API request failed (${res.status}): ${errText}`);
+  }
+
   const contentType = res.headers.get('content-type') || '';
   if (contentType.includes('application/json')) return res.json();
   return res.text();
+}
+
+// Helper to build form endpoint URLs for POST/PATCH operations (writing)
+function buildFormURL(formName, systemRecordId = null) {
+  return systemRecordId ? `/form/${formName}/${systemRecordId}` : `/form/${formName}`;
+}
+
+// Helper to build report endpoint URLs for GET operations (reading)
+// STRICT FIX: Do not double-encode the criteria string here.
+function buildReportURL(reportName, criteria = null) {
+  return criteria ? `/report/${reportName}?criteria=${criteria}` : `/report/${reportName}`;
 }
 
 // Try to initialize accessToken on module load using stored refresh token.
@@ -170,204 +256,145 @@ async function makeZohoApiRequest(urlPath, method = 'GET', data = null) {
 // === API Functions ===
 
 const exported = {
-  // Check if we have a valid access token
   isAuthenticated() {
     return !!accessToken;
   },
 
-  // Add this function to the exported object
   async ensureAuthenticated() {
-    // 1. If already in memory, good to go
     if (accessToken) return true;
-         
-    // 2. If not, try to load from secure storage
-    console.log("⚠️ Token missing in memory, attempting to reload...");
     try {
-      await refreshAccessToken(); // This loads from file and refreshes
+      await refreshAccessToken();
       return !!accessToken;
     } catch (error) {
-      console.error("Auto-refresh failed:", error.message);
       return false;
     }
   },
 
-  // User Registration/Login
-  // authCode is the authorization code returned by Zoho OAuth flow
   async loginOrRegister(authCode, customRedirectUri) {
-    // Perform initial token exchange and persist refresh token
     await initialTokenExchange(authCode, customRedirectUri);
-    
     try {
-      // Get the first user from the User_Profiles form
-      // In a production API, you would get the actual user from Zoho's userinfo endpoint
-      const path = `/User_Profiles/records?limit=1`;
-      const result = await makeZohoApiRequest(path, 'GET');
-      
-      if (result?.data && result.data.length > 0) {
-        // Return the existing user's ID
-        const userId = result.data[0].ID || result.data[0].id;
-        console.log(`✓ Found existing user: ${userId}`);
-        return { success: true, userId };
-      } else {
-        // No users exist, create a default one
-        console.log('No users found, creating default user...');
-        const newUserData = {
-          data: {
-            Username: 'DefaultUser',
-            Email: 'user@chessmaster.app',
-            Elo: 1200,
-            Wins: 0,
-            Losses: 0,
-            Draws: 0,
-            Games_Played: 0
-          }
-        };
-        const createResult = await makeZohoApiRequest(`/User_Profiles/records`, 'POST', newUserData);
-        const userId = createResult?.data?.[0]?.ID || createResult?.data?.[0]?.id;
-        console.log(`✓ Created new user: ${userId}`);
-        return { success: true, userId };
+      const userInfo = await fetchZohoUserInfo();
+      const firstName = userInfo.First_Name || userInfo.first_name || 'Player';
+      const lastName = userInfo.Last_Name || userInfo.last_name || 'Chess';
+      const email = userInfo.Email || userInfo.email || `player_${Date.now()}@chessmaster.app`;
+      const generatedId = `user_${Date.now()}`;
+
+      const criteria = `(email=="${encodeURIComponent(email)}")`;
+      const path = buildReportURL(process.env.ZOHO_USER_REPORT_NAME, criteria);
+
+      let result;
+      try {
+        result = await makeZohoApiRequest(path, 'GET');
+      } catch (err) {}
+
+      if (result && result.data && result.data.length > 0) {
+        return { success: true, userId: result.data[0].zoho_id || result.data[0].ID };
       }
+
+      const createPath = buildFormURL(process.env.ZOHO_USER_FORM_NAME);
+      const newUserData = {
+        data: {
+          zoho_id: generatedId,
+          username: `${firstName}_${Math.floor(Math.random() * 1000)}`,
+          email: email,
+          full_name: { first_name: firstName, last_name: lastName },
+          country1: 'Unknown',
+          chess_rating: 1200,
+          total_games_played: 0,
+          total_wins: 0,
+          total_losses: 0,
+          total_draws: 0
+        }
+      };
+
+      const createResult = await makeZohoApiRequest(createPath, 'POST', newUserData);
+      const newId = createResult?.data?.[0]?.zoho_id || generatedId;
+      return { success: true, userId: newId };
     } catch (error) {
-      console.error('Error getting/creating user:', error);
-      // Fallback: still return success but without a specific user ID
-      // Routes should handle cases where userId is not available
-      return { success: true, userId: null };
+      console.error('Login Error:', error);
+      return { success: false, userId: null };
     }
   },
 
-  // Get user profile from Zoho (returns first record from array)
-  async getUserProfile(userId) {
-    try {
-      const path = `/User_Profiles/records/${encodeURIComponent(userId)}`;
-      const result = await makeZohoApiRequest(path, 'GET');
-      // Zoho returns an array; get the first item
-      return result?.data?.[0] || null;
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-      return null;
-    }
-  },
-
-  // Get user by username
-  async getUserByUsername(username) {
-    try {
-      const path = `/User_Profiles/records?criteria=(Username=="${encodeURIComponent(username)}")`;
-      const result = await makeZohoApiRequest(path, 'GET');
-      // Zoho returns an array; get the first item
-      return result?.data?.[0] || null;
-    } catch (error) {
-      console.error('Error fetching user by username:', error);
-      return null;
-    }
-  },
-
-  // Get user by Zoho ID
-  async getUserByZohoId(zohoId) {
-    try {
-      const path = `/User_Profiles/records/${encodeURIComponent(zohoId)}`;
-      const result = await makeZohoApiRequest(path, 'GET');
-      // Zoho returns an array; get the first item
-      return result?.data?.[0] || null;
-    } catch (error) {
-      console.error('Error fetching user by Zoho ID:', error);
-      return null;
-    }
-  },
-
-  // Update User Profile Data (Elo, Wins, Losses, Draws)
-  async updateUserProfile(userId, profileData) {
-    // PATCH to User_Profiles/records/<recordId>
-    const path = `/User_Profiles/records/${encodeURIComponent(userId)}`;
-    // Zoho Creator API expects a specific payload shape: data: { <field>: value }
-    const payload = { data: profileData };
-    const result = await makeZohoApiRequest(path, 'PATCH', payload);
-    return result;
-  },
-
-  // Create a new user profile (registration)
   async createUserProfile(profileData) {
-    const path = `/User_Profiles/records`;
-    const payload = { data: profileData };
-    const result = await makeZohoApiRequest(path, 'POST', payload);
-    return result;
+    const path = buildFormURL(process.env.ZOHO_USER_FORM_NAME);
+    const mappedData = {
+      zoho_id: profileData.zoho_id || profileData.id || `user_${Date.now()}`,
+      username: profileData.username || `Player_${Math.floor(Math.random() * 1000)}`,
+      email: profileData.email || "unknown@chessmaster.app",
+      full_name: {
+        first_name: profileData.first_name || profileData.firstName || 'Player',
+        last_name: profileData.last_name || profileData.lastName || 'Chess'
+      },
+      chess_rating: profileData.chess_rating || 1200,
+      total_games_played: profileData.total_games_played || 0,
+      total_wins: profileData.total_wins || 0,
+      total_losses: profileData.total_losses || 0,
+      total_draws: profileData.total_draws || 0
+    };
+    return await makeZohoApiRequest(path, 'POST', { data: mappedData });
   },
 
-  // Create Game Record (CREATE operation)
-  async createGameRecord(gameData) {
-    const path = `/Match_History/records`;
-    const payload = { data: gameData };
-    const result = await makeZohoApiRequest(path, 'POST', payload);
-    return result?.data?.[0] || result;
-  },
-
-  // Update Game Record (UPDATE operation)
-  async updateGameRecord(gameId, gameData) {
-    const path = `/Match_History/records/${encodeURIComponent(gameId)}`;
-    const payload = { data: gameData };
-    const result = await makeZohoApiRequest(path, 'PATCH', payload);
-    return result?.data?.[0] || result;
-  },
-
-  // Get a specific game record
-  async getGame(gameId) {
+  async getUserProfile(userId) {
+    if (!userId) return null;
+    const criteria = `(zoho_id=="${encodeURIComponent(userId)}")`;
+    const path = buildReportURL(process.env.ZOHO_USER_REPORT_NAME, criteria);
     try {
-      const path = `/Match_History/records/${encodeURIComponent(gameId)}`;
       const result = await makeZohoApiRequest(path, 'GET');
-      // Zoho returns an array; get the first item
       return result?.data?.[0] || null;
     } catch (error) {
-      console.error('Error fetching game:', error);
       return null;
     }
   },
 
-  // Get recent games for a user
-  async getRecentGames(userId) {
+  async getUserByUsername(username) {
+    if (!username) return null;
+    const criteria = `(username=="${encodeURIComponent(username)}")`;
+    const path = buildReportURL(process.env.ZOHO_USER_REPORT_NAME, criteria);
     try {
-      const path = `/Match_History/records?criteria=(White_Player=="${encodeURIComponent(userId)}" OR Black_Player=="${encodeURIComponent(userId)}")&sort_field=Date_Created&sort_order=desc`;
       const result = await makeZohoApiRequest(path, 'GET');
-      // Zoho returns an array of records
-      return result?.data || [];
+      return result?.data?.[0] || null;
     } catch (error) {
-      console.error('Error fetching recent games:', error);
-      return [];
+      return null;
     }
   },
 
-  // Get leaderboard (all users sorted by Elo)
+  async updateUserProfile(systemRecordId, profileData) {
+    if (!systemRecordId) throw new Error("System Record ID is required for PATCH");
+    const path = buildFormURL(process.env.ZOHO_USER_FORM_NAME, systemRecordId);
+    return await makeZohoApiRequest(path, 'PATCH', { data: profileData });
+  },
+
+  async createGameRecord(gameData) {
+    const path = buildFormURL(process.env.ZOHO_GAME_FORM_NAME);
+    const mappedGameData = {
+      white_player: gameData.white_player || gameData.whitePlayer || "",
+      black_player: gameData.black_player || gameData.blackPlayer || "",
+      match_date: gameData.match_date || gameData.matchDate || new Date().toLocaleDateString('en-GB'),
+      match_result: gameData.match_result || gameData.matchResult || "Draw",
+      opening_used: gameData.opening_used || gameData.openingUsed || "Unknown",
+      moves_played: gameData.moves_played || gameData.movesPlayed || "",
+      time_control: gameData.time_control || gameData.timeControl || "10+0",
+      rating_change_white_player: gameData.rating_change_white_player || 0,
+      rating_change_black_player: gameData.rating_change_black_player || 0,
+      winner1: gameData.winner1 || gameData.winner || "",
+      game_status1: gameData.game_status1 || gameData.gameStatus || "Completed"
+    };
+    return await makeZohoApiRequest(path, 'POST', { data: mappedGameData });
+  },
+
   async getLeaderboard() {
     try {
-      const path = `/User_Profiles/records?sort_field=Elo&sort_order=desc`;
+      const path = buildReportURL(process.env.ZOHO_USER_REPORT_NAME);
       const result = await makeZohoApiRequest(path, 'GET');
-      // Zoho returns an array of user records
       return result?.data || [];
     } catch (error) {
-      console.error('Error fetching leaderboard:', error);
       return [];
     }
   },
 
-  // Fetch User Rank (optional, for leaderboard)
-  async getRank(userId) {
-    const path = `/User_Profiles/records/${encodeURIComponent(userId)}`;
-    const record = await makeZohoApiRequest(path, 'GET');
-    // Example: assume the record contains a 'rank' field
-    return { success: true, rank: record.data?.rank ?? null, userId };
-  },
-
-  // Real logout implementation
   logout() {
     accessToken = null;
-    try {
-      secureStorage.clear('zoho_refresh_token');
-      // Also try to delete the file directly for safety
-      const tokenPath = process.env.SECURE_STORAGE_PATH || './.secure-storage/zoho_refresh_token.json';
-      if (fs.existsSync(tokenPath)) {
-        fs.unlinkSync(tokenPath);
-      }
-    } catch (err) {
-      console.warn('Failed to clear Zoho refresh token:', err);
-    }
     return true;
   }
 };
