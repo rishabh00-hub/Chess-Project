@@ -1,4 +1,5 @@
 // zoho-api-service.js
+import { SQLiteBaseIntegerBuilder } from 'drizzle-orm/sqlite-core';
 import SecureStorage from './secureStorage.js';
 import fs from 'fs';
 import nodeFetch from 'node-fetch';
@@ -180,7 +181,6 @@ async function makeZohoApiRequest(urlPath, method = 'GET', body = null) {
     headers: {
       'Authorization': `Zoho-oauthtoken ${accessToken}`,
       'Content-Type': 'application/json',
-      'environment': 'development' // Explicitly targeting the draft environment
     }
   };
 
@@ -277,24 +277,32 @@ const exported = {
       const firstName = userInfo.First_Name || userInfo.first_name || 'Player';
       const lastName = userInfo.Last_Name || userInfo.last_name || 'Chess';
       const email = userInfo.Email || userInfo.email || `player_${Date.now()}@chessmaster.app`;
-      const generatedId = `user_${Date.now()}`;
 
-      const criteria = `(email=="${encodeURIComponent(email)}")`;
+      // 1. Search for existing user by email
+      const criteria = `(email=="${email}")`;
       const path = buildReportURL(process.env.ZOHO_USER_REPORT_NAME, criteria);
-
-      let result;
+      
+      let result = null;
       try {
         result = await makeZohoApiRequest(path, 'GET');
-      } catch (err) {}
-
-      if (result && result.data && result.data.length > 0) {
-        return { success: true, userId: result.data[0].zoho_id || result.data[0].ID };
+      } catch (err) {
+        if (err.message && (err.message.includes('No Data') || err.message.includes('3000'))) {
+          console.log("Confirmed: No user found with this email. Proceeding to create...");
+        } else {
+          console.error("Critical API Error during user search:", err.message);
+          throw new Error("System configuration or API error. Login halted.");
+        }
       }
 
+      // 2. Return existing user ID if found
+      if (result && result.data && result.data.length > 0) {
+        return { success: true, userId: result.data[0].ID }; 
+      }
+
+      // 3. Create new user with Zoho Creator form
       const createPath = buildFormURL(process.env.ZOHO_USER_FORM_NAME);
       const newUserData = {
         data: {
-          zoho_id: generatedId,
           username: `${firstName}_${Math.floor(Math.random() * 1000)}`,
           email: email,
           full_name: { first_name: firstName, last_name: lastName },
@@ -308,7 +316,13 @@ const exported = {
       };
 
       const createResult = await makeZohoApiRequest(createPath, 'POST', newUserData);
-      const newId = createResult?.data?.[0]?.zoho_id || generatedId;
+      const newId = createResult?.data?.[0]?.ID;
+      
+      if (!newId) {
+        console.error('ERROR: Zoho did not return ID on user creation', createResult);
+        throw new Error('Failed to get user ID from Zoho');
+      }
+      
       return { success: true, userId: newId };
     } catch (error) {
       console.error('Login Error:', error);
@@ -319,37 +333,39 @@ const exported = {
   async createUserProfile(profileData) {
     const path = buildFormURL(process.env.ZOHO_USER_FORM_NAME);
     const mappedData = {
-      zoho_id: profileData.zoho_id || profileData.id || `user_${Date.now()}`,
       username: profileData.username || `Player_${Math.floor(Math.random() * 1000)}`,
-      email: profileData.email || "unknown@chessmaster.app",
+      email: profileData.email || 'unknown@chessmaster.app',
       full_name: {
-        first_name: profileData.first_name || profileData.firstName || 'Player',
-        last_name: profileData.last_name || profileData.lastName || 'Chess'
+        first_name: profileData.firstName || profileData.first_name || 'Player',
+        last_name: profileData.lastName || profileData.last_name || 'Chess'
       },
-      chess_rating: profileData.chess_rating || 1200,
-      total_games_played: profileData.total_games_played || 0,
-      total_wins: profileData.total_wins || 0,
-      total_losses: profileData.total_losses || 0,
-      total_draws: profileData.total_draws || 0
+      country1: profileData.country1 || 'Unknown',
+      chess_rating: profileData.elo ?? profileData.chess_rating ?? 1200,
+      total_games_played: profileData.gamesPlayed ?? profileData.total_games_played ?? 0,
+      total_wins: profileData.wins ?? profileData.total_wins ?? 0,
+      total_losses: profileData.losses ?? profileData.total_losses ?? 0,
+      total_draws: profileData.draws ?? profileData.total_draws ?? 0
     };
     return await makeZohoApiRequest(path, 'POST', { data: mappedData });
   },
 
   async getUserProfile(userId) {
     if (!userId) return null;
-    const criteria = `(zoho_id=="${encodeURIComponent(userId)}")`;
-    const path = buildReportURL(process.env.ZOHO_USER_REPORT_NAME, criteria);
     try {
+      // Use Zoho system ID for lookup
+      const criteria = `(ID=="${userId}")`;
+      const path = buildReportURL(process.env.ZOHO_USER_REPORT_NAME, criteria);
       const result = await makeZohoApiRequest(path, 'GET');
       return result?.data?.[0] || null;
     } catch (error) {
+      console.error(`Error fetching user ${userId}:`, error);
       return null;
     }
   },
 
   async getUserByUsername(username) {
     if (!username) return null;
-    const criteria = `(username=="${encodeURIComponent(username)}")`;
+    const criteria = `(username=="${username}")`;
     const path = buildReportURL(process.env.ZOHO_USER_REPORT_NAME, criteria);
     try {
       const result = await makeZohoApiRequest(path, 'GET');
@@ -365,22 +381,63 @@ const exported = {
     return await makeZohoApiRequest(path, 'PATCH', { data: profileData });
   },
 
-  async createGameRecord(gameData) {
-    const path = buildFormURL(process.env.ZOHO_GAME_FORM_NAME);
-    const mappedGameData = {
-      white_player: gameData.white_player || gameData.whitePlayer || "",
-      black_player: gameData.black_player || gameData.blackPlayer || "",
-      match_date: gameData.match_date || gameData.matchDate || new Date().toLocaleDateString('en-GB'),
-      match_result: gameData.match_result || gameData.matchResult || "Draw",
-      opening_used: gameData.opening_used || gameData.openingUsed || "Unknown",
-      moves_played: gameData.moves_played || gameData.movesPlayed || "",
-      time_control: gameData.time_control || gameData.timeControl || "10+0",
-      rating_change_white_player: gameData.rating_change_white_player || 0,
-      rating_change_black_player: gameData.rating_change_black_player || 0,
-      winner1: gameData.winner1 || gameData.winner || "",
-      game_status1: gameData.game_status1 || gameData.gameStatus || "Completed"
-    };
-    return await makeZohoApiRequest(path, 'POST', { data: mappedGameData });
+  async getRecentGames(userId) {
+    if (!userId) return [];
+    // Query games where user is white or black player using Zoho system ID
+    const criteria = `(white_player=="${userId}" || black_player=="${userId}")`;
+    const path = buildReportURL(process.env.ZOHO_GAME_REPORT_NAME, criteria);
+    try {
+      const result = await makeZohoApiRequest(path, 'GET');
+      return result?.data || [];
+    } catch (error) {
+      console.error("Error fetching recent games:", error);
+      return [];
+    }
+  },
+
+    async createGameRecord(gameData) {
+      const path = buildFormURL(process.env.ZOHO_GAME_FORM_NAME);
+      const mappedGameData = {
+        white_player: String(gameData.whitePlayerId || ''),
+        black_player: String(gameData.blackPlayerId || ''),
+        match_date: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        match_result: String(gameData.status || 'active'),
+        opening_used: String(gameData.openingUsed || ''),
+        moves_played: String(gameData.moves?.join(',') || ''),
+        time_control: String(gameData.timeControl || ''),
+        rating_change_white_player: String(gameData.ratingChangeWhite || '0'),
+        rating_change_black_player: String(gameData.ratingChangeBlack || '0'),
+        winner1: String(gameData.winnerId || ''),
+        game_status1: String(gameData.status || 'active'),
+        current_fen1: String(gameData.currentPosition || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+      };
+      
+      return await makeZohoApiRequest(path, 'POST', { data: mappedGameData });
+    },
+
+  async getGame(gameId) {
+    if (!gameId) return null;
+    try {
+      // Query game record by system ID using the report endpoint
+      const criteria = `(ID=="${gameId}")`;
+      const path = buildReportURL(process.env.ZOHO_GAME_REPORT_NAME, criteria);
+      const result = await makeZohoApiRequest(path, 'GET');
+      return result?.data?.[0] || null;
+    } catch (error) {
+      console.error(`Error fetching game ${gameId}:`, error);
+      return null;
+    }
+  },
+
+  async updateGameRecord(gameId, updates) {
+    if (!gameId) throw new Error('gameId is required for PATCH');
+    try {
+      const path = buildFormURL(process.env.ZOHO_GAME_FORM_NAME, gameId);
+      return await makeZohoApiRequest(path, 'PATCH', { data: updates });
+    } catch (error) {
+      console.error(`Error updating game ${gameId}:`, error);
+      throw error;
+    }
   },
 
   async getLeaderboard() {

@@ -24,9 +24,9 @@ export default function Home() {
     const clientId = import.meta.env.VITE_ZOHO_CLIENT_ID;
     console.log("Client ID:", clientId);
     const redirectUri = encodeURIComponent(import.meta.env.VITE_ZOHO_REDIRECT_URI);
-    const scope = encodeURIComponent("AaaServer.profile.READ,ZohoCreator.data.CREATE,ZohoCreator.data.READ,ZohoCreator.data.UPDATE");
+    const scope = encodeURIComponent("AaaServer.profile.READ,ZohoCreator.data.CREATE,ZohoCreator.data.READ,ZohoCreator.data.UPDATE,ZohoCreator.meta.READ");
     const responseType = "code";
-    const authUrl = `https://accounts.zoho.in/oauth/v2/auth?scope=${scope}&client_id=${clientId}&response_type=${responseType}&access_type=offline&redirect_uri=${redirectUri}`;
+    const authUrl = `https://accounts.zoho.in/oauth/v2/auth?scope=${scope}&client_id=${clientId}&response_type=${responseType}&access_type=offline&redirect_uri=${redirectUri}&prompt=consent`;
     window.location.href = authUrl;
   };
   const { user, isLoading } = useAuth();

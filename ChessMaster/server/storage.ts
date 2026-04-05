@@ -11,35 +11,71 @@ import {
 
 class Storage implements IStorage {
   // Helper to map Zoho game data to app Game object
-  private mapZohoGameToAppGame(zohoData: any): Game {
+  private mapZohoGameToAppGame(zohoResponse: any): Game {
+    // 1. Extract the first record from Zoho response array if needed
+    const record = (zohoResponse.data && zohoResponse.data.length > 0) 
+      ? zohoResponse.data[0] 
+      : zohoResponse;
+
+    console.log("EXTRACTED GAME RECORD:", record); 
+
+    // 2. Parse aiDifficulty with fallback
+    const rawAiDifficulty = record.aiDifficulty ?? record.ai_difficulty ?? record.AI_Difficulty;
+    const aiDifficulty = typeof rawAiDifficulty === 'number'
+      ? rawAiDifficulty
+      : typeof rawAiDifficulty === 'string'
+        ? parseInt(rawAiDifficulty, 10)
+        : 1200;
+
+    // 3. Parse moves from moves_played (comma or semicolon separated string)
+    let moves: Array<{ notation: string; timestamp: Date; fen: string }> = [];
+    if (record.moves_played) {
+      try {
+        moves = JSON.parse(record.moves_played);
+      } catch {
+        // If not JSON, treat as empty or comma-separated
+        moves = [];
+      }
+    }
+
+    // 4. Return properly mapped Game object
     return {
-      id: zohoData.ID,
-      whitePlayerId: zohoData.White_Player,
-      blackPlayerId: zohoData.Black_Player,
-      gameMode: zohoData.Game_Mode,
-      status: zohoData.Status.toLowerCase(),
-      moves: JSON.parse(zohoData.Moves_JSON || '[]'),
-      currentPosition: zohoData.FEN,
-      winnerId: zohoData.Winner,
-      createdAt: new Date(zohoData.Date_Created),
+      id: record.ID,
+      whitePlayerId: record.white_player || '',
+      blackPlayerId: record.black_player || '',
+      gameMode: String(record.gameMode || record.game_mode || 'ai') as 'ai' | 'friend' | 'online',
+      status: String(record.game_status1 || record.status || 'active') as any,
+      result: record.match_result as 'white_wins' | 'black_wins' | 'draw' | undefined,
+      currentTurn: 'white' as const, // TODO: store in Zoho if needed
+      currentPosition: record.current_fen1 || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      moves,
+      moveHistory: record.moves_played || '',
+      halfMoveClock: 0,
+      fullMoveNumber: 1,
+      winnerId: record.winner1 || undefined,
+      aiDifficulty,
+      pointsAwarded: 0,
+      createdAt: record.match_date ? new Date(record.match_date) : new Date(),
     };
   }
 
   // Helper to map Zoho user data to app User object
   private mapZohoUserToAppUser(zohoData: any): User {
-    // Map new Zoho Creator field names to app User type
+    // Map Zoho Creator field names (exact) to app User type
     return {
       id: zohoData.ID || zohoData.id,
       username: zohoData.username || '',
       email: zohoData.email || '',
+      firstName: zohoData.full_name?.first_name || '',
+      lastName: zohoData.full_name?.last_name || '',
       elo: zohoData.chess_rating ?? 1200,
       wins: zohoData.total_wins ?? 0,
       losses: zohoData.total_losses ?? 0,
       draws: zohoData.total_draws ?? 0,
       totalPoints: (zohoData.total_wins ?? 0) * 3 + (zohoData.total_draws ?? 0), // Win = 3 points, Draw = 1 point
-      level: 1, // Default level
-      xp: 0, // Keep for Zoho compatibility but don't update
-      gamesPlayed: zohoData.total_game_played ?? 0,
+      level: 1, // Default level (not in Zoho schema)
+      xp: 0, // Keep for backward compatibility but not updated in Zoho
+      gamesPlayed: zohoData.total_games_played ?? 0,
       resignations: 0,
       currentStreak: 0,
       bestStreak: 0,
@@ -52,9 +88,18 @@ class Storage implements IStorage {
   // User operations
   async getUser(id: string): Promise<User | undefined> {
     try {
+      if (!id) {
+        console.warn('getUser called with empty id');
+        return undefined;
+      }
       const data = await zohoApi.getUserProfile(id);
+      if (!data) {
+        console.warn(`User not found in Zoho: ${id}`);
+        return undefined;
+      }
       return this.mapZohoUserToAppUser(data);
-    } catch {
+    } catch (error) {
+      console.error(`CRITICAL: Failed to fetch user ${id} from Zoho:`, error);
       return undefined;
     }
   }
@@ -93,10 +138,18 @@ class Storage implements IStorage {
 
   async getGame(id: number): Promise<Game | undefined> {
     try {
+      if (!id || id <= 0) {
+        console.warn(`getGame called with invalid id: ${id}`);
+        return undefined;
+      }
       const data = await zohoApi.getGame(id.toString());
-      if (!data) return undefined;
+      if (!data) {
+        console.warn(`Game not found in Zoho: ${id}`);
+        return undefined;
+      }
       return this.mapZohoGameToAppGame(data);
-    } catch {
+    } catch (error) {
+      console.error(`CRITICAL: Failed to fetch game ${id} from Zoho:`, error);
       return undefined;
     }
   }
@@ -241,13 +294,13 @@ class Storage implements IStorage {
       gamesPlayed: blackPlayer.gamesPlayed + 1,
     };
 
-    // Update both players in Zoho using new field names
+    // Update both players in Zoho using exact field names
     await zohoApi.updateUserProfile(game.whitePlayerId, {
       chess_rating: whiteUpdates.elo,
       total_wins: whiteUpdates.wins,
       total_losses: whiteUpdates.losses,
       total_draws: whiteUpdates.draws,
-      total_game_played: whiteUpdates.gamesPlayed,
+      total_games_played: whiteUpdates.gamesPlayed,
     });
 
     await zohoApi.updateUserProfile(game.blackPlayerId, {
@@ -255,7 +308,7 @@ class Storage implements IStorage {
       total_wins: blackUpdates.wins,
       total_losses: blackUpdates.losses,
       total_draws: blackUpdates.draws,
-      total_game_played: blackUpdates.gamesPlayed,
+      total_games_played: blackUpdates.gamesPlayed,
     });
   }
 

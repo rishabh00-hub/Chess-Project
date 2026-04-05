@@ -1,4 +1,14 @@
+import { integer, pgTable, serial, text } from "drizzle-orm/pg-core";
 import { z } from "zod";
+
+export const games = pgTable("games", {
+  id: serial("id").primaryKey(),
+  whitePlayerId: text("white_player_id").notNull(),
+  blackPlayerId: text("black_player_id").notNull(),
+  gameMode: text("game_mode").notNull(),
+  status: text("status").notNull(),
+  aiDifficulty: integer("ai_difficulty"),
+});
 
 // TypeScript interfaces for data types
 export interface Session {
@@ -43,7 +53,8 @@ export interface Game {
   moveHistory: string;
   halfMoveClock: number;
   fullMoveNumber: number;
-  aiDifficulty?: 'easy' | 'medium' | 'hard';
+  aiDifficulty?: number;
+  aiElo?: number;
   timeControl?: { initial: number; increment: number };
   whiteTimeRemaining?: number;
   blackTimeRemaining?: number;
@@ -92,7 +103,8 @@ export const insertGameSchema = z.object({
   moveHistory: z.string().default(''),
   halfMoveClock: z.number().default(0),
   fullMoveNumber: z.number().default(1),
-  aiDifficulty: z.enum(['easy', 'medium', 'hard']).optional(),
+  aiDifficulty: z.number().min(600).max(2100).optional(),
+  aiElo: z.number().min(600).max(2100).optional(),
   timeControl: z.object({
     initial: z.number(),
     increment: z.number()

@@ -35,7 +35,7 @@ export default function Game() {
 
   const resignMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest('POST', `/api/games/${gameId}/resign`, { userId: 'demo_user_123' });
+      return apiRequest('POST', `/api/games/${gameId}/resign`, {});
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/games', gameId] });

@@ -43,24 +43,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const isLoggedIn = await zohoApi.ensureAuthenticated();
       if (!isLoggedIn) {
-        return res.status(401).json(null);
+        console.warn('API /me: Zoho authentication failed');
+        return res.status(401).json({ message: 'Zoho authentication failed' });
       }
       
       // Read userId from session instead of query parameters
       const userId = req.session?.userId;
       if (!userId) {
-        console.warn('No userId in session');
-        return res.status(401).json(null);
+        console.warn('API /me: No userId in session');
+        return res.status(401).json({ message: 'No active session' });
       }
       
       const user = await storage.getUser(userId);
       if (!user) {
-        return res.status(401).json(null);
+        console.warn(`API /me: User not found in storage: ${userId}`);
+        return res.status(404).json({ message: 'User profile not found' });
       }
       return res.json(user);
     } catch (error) {
-      console.error("Auth/Profile Error:", error);
-      res.status(401).json(null);
+      console.error("CRITICAL: Auth/Profile Error:", error);
+      res.status(500).json({ message: 'Internal server error' });
     }
   });
 
@@ -91,22 +93,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Real game creation route
   app.post('/api/games', async (req: any, res) => {
     try {
-      const { whitePlayerId, blackPlayerId, gameMode, aiDifficulty } = req.body;
-      if (!whitePlayerId || !gameMode) {
-        return res.status(400).json({ message: "Missing required fields: whitePlayerId, gameMode" });
+      console.log("POST /api/games received:", req.body);
+
+      const { whitePlayerId, blackPlayerId, gameMode } = req.body;
+      let safeElo: number | null = null;
+      
+      // Validate required fields
+      if (!whitePlayerId) {
+        return res.status(400).json({ message: "Missing required field: whitePlayerId" });
       }
+      if (!gameMode || !['ai', 'friend', 'online'].includes(gameMode)) {
+        return res.status(400).json({ message: "Missing or invalid field: gameMode (must be 'ai', 'friend', or 'online')" });
+      }
+
+      // Parse and validate AI difficulty if present
+      if (gameMode === 'ai') {
+        if (req.body.aiDifficulty !== undefined) {
+          safeElo = parseInt(req.body.aiDifficulty, 10);
+          if (isNaN(safeElo) || safeElo < 600 || safeElo > 2100) {
+            console.warn(`Invalid aiDifficulty: ${req.body.aiDifficulty}, using default 1200`);
+            safeElo = 1200;
+          }
+        } else {
+          safeElo = 1200;
+        }
+      }
+
       const gameData = {
         whitePlayerId,
         blackPlayerId: blackPlayerId || null,
         gameMode,
         status: 'active',
-        aiDifficulty: aiDifficulty || null
+        aiDifficulty: safeElo
       };
+      
       const game = await storage.createGame(gameData);
+      if (!game) {
+        return res.status(500).json({ message: "Failed to create game: storage returned null" });
+      }
+      
       res.json(game);
-    } catch (error) {
-      console.error("Error creating game:", error);
-      res.status(500).json({ message: "Failed to create game" });
+    } catch (error: any) {
+      console.error("CRITICAL: Error creating game:", error);
+      res.status(500).json({ message: "Failed to create game", error: error?.message });
     }
   });
 
@@ -123,12 +152,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/games/user/recent', async (req: any, res) => {
     try {
-      const userId = req.query.userId;
+      const userId = req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Not authenticated' });
+      }
       const games = await storage.getRecentGames(userId);
       res.status(200).json(games);
     } catch (error) {
       console.error("Error fetching recent games:", error);
-      res.status(200).json([]);
+      res.status(500).json({ message: "Failed to fetch recent games" });
     }
   });
 
@@ -143,15 +175,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Return a stable zero state for rank so frontend shows empty state instead of 404
+  // Return user's rank on the leaderboard
   app.get('/api/leaderboard/rank', async (req: any, res) => {
     try {
-      const userId = req.query.userId;
+      const userId = req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Not authenticated' });
+      }
       const rank = await storage.getUserRank(userId);
       res.json({ rank, userId });
     } catch (error) {
-      console.error('Unexpected error in /api/leaderboard/rank:', error);
-      res.status(200).json({ rank: 0, userId: req.query.userId || null });
+      console.error('Error in /api/leaderboard/rank:', error);
+      res.status(500).json({ message: 'Failed to fetch rank' });
     }
   });
 
@@ -219,8 +254,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           const { ChessEngine } = await import('../shared/chessEngine.js');
           const engine = new ChessEngine(game.currentPosition || undefined);
-          const difficulty = game.aiDifficulty as 'easy' | 'medium' | 'hard' || 'medium';
-          const aiMove = engine.getAIMove(difficulty);
+          const elo = typeof game.aiDifficulty === 'number'
+            ? game.aiDifficulty
+            : typeof game.aiDifficulty === 'string'
+              ? parseInt(game.aiDifficulty, 10)
+              : 1200;
+          const aiMove = engine.getAIMove(elo);
           
           if (aiMove) {
             await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1500));
@@ -246,10 +285,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/games/:id/resign', async (req: any, res) => {
     try {
       const gameId = parseInt(req.params.id);
-      const userId = req.body.userId || "demo_user_123";
+      const userId = req.session?.userId;
+      
+      if (!userId) {
+        return res.status(401).json({ message: 'Not authenticated' });
+      }
       
       const game = await storage.resignGame(gameId, userId);
-      
       res.json(game);
     } catch (error: any) {
       console.error("Error resigning game:", error);

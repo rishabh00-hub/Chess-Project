@@ -564,8 +564,12 @@ export class ChessEngine {
     return moves;
   }
 
-  public getAIMove(difficulty: 'easy' | 'medium' | 'hard' = 'easy'): Move | null {
-    const depth = difficulty === 'easy' ? 1 : difficulty === 'medium' ? 2 : 3;
+  public getAIMove(elo: number | string = 1200): Move | null {
+    const value = typeof elo === 'string' ? parseInt(elo, 10) : elo;
+    const clamped = Math.max(600, Math.min(2100, Number.isFinite(value) ? value : 1200));
+
+    // Map Elo to search depth (higher Elo => deeper search)
+    const depth = clamped < 1000 ? 1 : clamped < 1400 ? 2 : clamped < 1800 ? 3 : 4;
     return this.getBestMove(depth);
   }
 

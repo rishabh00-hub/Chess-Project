@@ -19,7 +19,7 @@ export default function FloatingActionButton() {
         blackPlayerId: gameMode === 'ai' ? 'ai' : null,
         gameMode,
         status: 'active',
-        aiDifficulty: gameMode === 'ai' ? 'medium' : null
+        aiDifficulty: gameMode === 'ai' ? 1200 : null
       };
       const response = await apiRequest('POST', '/api/games', gameData);
       return await response.json();
