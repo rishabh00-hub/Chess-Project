@@ -10,6 +10,29 @@ import {
 } from "../shared/schema.js";
 
 class Storage implements IStorage {
+  // Helper to map app status to Zoho dropdown
+  private mapAppStatusToZoho(status: string): string {
+    const map: { [key: string]: string } = {
+      'active': 'Active',
+      'completed': 'Completed',
+      'draw': 'Draw',
+      'abandoned': 'Completed',
+      'resigned': 'Completed',
+      'timeout': 'Completed'
+    };
+    return map[status] || 'Active';
+  }
+
+  // Helper to map app result to Zoho dropdown
+  private mapAppResultToZoho(result?: string): string {
+    if (!result) return 'Ongoing';
+    const map: { [key: string]: string } = {
+      'white_wins': 'Win',
+      'black_wins': 'Win',
+      'draw': 'Draw'
+    };
+    return map[result] || 'Ongoing';
+  }
   // Helper to map Zoho game data to app Game object
   private mapZohoGameToAppGame(zohoResponse: any): Game {
     // 1. Extract the first record from Zoho response array if needed
@@ -38,15 +61,36 @@ class Storage implements IStorage {
       }
     }
 
+    // 4. Calculate currentTurn from FEN
+    const fen = record.current_fen1 || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    const fenParts = fen.split(' ');
+    const currentTurn: 'white' | 'black' = fenParts[1] === 'w' ? 'white' : 'black';
+
+    // 5. Map status from Zoho dropdown
+    const statusMap: { [key: string]: 'active' | 'completed' | 'draw' | 'abandoned' | 'resigned' | 'timeout' } = {
+      'Active': 'active',
+      'Completed': 'completed',
+      'Draw': 'draw'
+    };
+    const status = statusMap[record.game_status1] || 'active';
+
+    // 6. Map result based on match_result and winner
+    let result: 'white_wins' | 'black_wins' | 'draw' | undefined;
+    if (record.match_result === 'Draw') {
+      result = 'draw';
+    } else if (record.winner1) {
+      result = record.winner1 === record.white_player ? 'white_wins' : 'black_wins';
+    }
+
     // 4. Return properly mapped Game object
     return {
       id: record.ID,
       whitePlayerId: record.white_player || '',
       blackPlayerId: record.black_player || '',
       gameMode: String(record.gameMode || record.game_mode || 'ai') as 'ai' | 'friend' | 'online',
-      status: String(record.game_status1 || record.status || 'active') as any,
-      result: record.match_result as 'white_wins' | 'black_wins' | 'draw' | undefined,
-      currentTurn: 'white' as const, // TODO: store in Zoho if needed
+      status,
+      result,
+      currentTurn,
       currentPosition: record.current_fen1 || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
       moves,
       moveHistory: record.moves_played || '',
@@ -161,8 +205,14 @@ class Storage implements IStorage {
     if (updates.moves) zohoUpdates.moves_played = JSON.stringify(updates.moves);
     if (updates.currentPosition) zohoUpdates.current_fen1 = updates.currentPosition;
     if (updates.status) {
-      zohoUpdates.game_status1 = updates.status;
-      zohoUpdates.match_result = updates.status;
+      zohoUpdates.game_status1 = this.mapAppStatusToZoho(updates.status);
+      if (updates.status === 'draw') {
+        zohoUpdates.match_result = 'Draw';
+      } else if (updates.winnerId) {
+        zohoUpdates.match_result = 'Win';
+      } else {
+        zohoUpdates.match_result = 'Ongoing';
+      }
     }
     if (updates.winnerId) zohoUpdates.winner1 = updates.winnerId;
     const result = await zohoApi.updateGameRecord(id.toString(), zohoUpdates);
@@ -204,8 +254,8 @@ class Storage implements IStorage {
     const updateData = {
       current_fen1: newFen,
       moves_played: JSON.stringify(newMoves),
-      game_status1: status,
-      match_result: status,
+      game_status1: this.mapAppStatusToZoho(status),
+      match_result: gameResult === 'draw' ? 'Draw' : gameResult ? 'Win' : 'Ongoing',
       winner1: winnerId
     };
     const result = await zohoApi.updateGameRecord(gameId.toString(), updateData);

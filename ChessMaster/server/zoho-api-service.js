@@ -395,20 +395,41 @@ const exported = {
     }
   },
 
-    async createGameRecord(gameData) {
+  async createGameRecord(gameData) {
       const path = buildFormURL(process.env.ZOHO_GAME_FORM_NAME);
+      const now = new Date();
+      const day = String(now.getDate()).padStart(2, '0');
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const year = now.getFullYear();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+      
+      const statusMap = {
+        'active': 'Active',
+        'waiting': 'Active',
+        'completed': 'Completed',
+        'draw': 'Draw'
+      };
+      const resultMap = {
+        'white_wins': 'Win',
+        'black_wins': 'Win',
+        'draw': 'Draw'
+      };
+      
       const mappedGameData = {
         white_player: String(gameData.whitePlayerId || ''),
         black_player: String(gameData.blackPlayerId || ''),
-        match_date: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        match_result: String(gameData.status || 'active'),
+        match_date: formattedDate,
+        match_result: resultMap[gameData.result] || 'Ongoing',
         opening_used: String(gameData.openingUsed || ''),
         moves_played: JSON.stringify(gameData.moves || []),
         time_control: String(gameData.timeControl || ''),
         rating_change_white_player: String(gameData.ratingChangeWhite || '0'),
         rating_change_black_player: String(gameData.ratingChangeBlack || '0'),
         winner1: String(gameData.winnerId || ''),
-        game_status1: String(gameData.status || 'active'),
+        game_status1: statusMap[gameData.status] || 'Active',
         current_fen1: String(gameData.currentPosition || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
       };
       
