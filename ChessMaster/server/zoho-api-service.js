@@ -403,7 +403,7 @@ const exported = {
         match_date: new Date().toISOString().replace('T', ' ').substring(0, 19),
         match_result: String(gameData.status || 'active'),
         opening_used: String(gameData.openingUsed || ''),
-        moves_played: String(gameData.moves?.join(',') || ''),
+        moves_played: JSON.stringify(gameData.moves || []),
         time_control: String(gameData.timeControl || ''),
         rating_change_white_player: String(gameData.ratingChangeWhite || '0'),
         rating_change_black_player: String(gameData.ratingChangeBlack || '0'),

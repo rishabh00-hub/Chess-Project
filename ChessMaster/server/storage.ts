@@ -158,10 +158,13 @@ class Storage implements IStorage {
     const game = await this.getGame(id);
     if (!game) throw new Error('Game not found');
     const zohoUpdates: any = {};
-    if (updates.moves) zohoUpdates.Moves_JSON = JSON.stringify(updates.moves);
-    if (updates.currentPosition) zohoUpdates.FEN = updates.currentPosition;
-    if (updates.status) zohoUpdates.Status = updates.status;
-    if (updates.winnerId) zohoUpdates.Winner = updates.winnerId;
+    if (updates.moves) zohoUpdates.moves_played = JSON.stringify(updates.moves);
+    if (updates.currentPosition) zohoUpdates.current_fen1 = updates.currentPosition;
+    if (updates.status) {
+      zohoUpdates.game_status1 = updates.status;
+      zohoUpdates.match_result = updates.status;
+    }
+    if (updates.winnerId) zohoUpdates.winner1 = updates.winnerId;
     const result = await zohoApi.updateGameRecord(id.toString(), zohoUpdates);
     // Handle both direct data and wrapped response
     const gameData = result.data?.[0] || result.data || result;
@@ -199,10 +202,11 @@ class Storage implements IStorage {
       gameResult = 'draw';
     }
     const updateData = {
-      FEN: newFen,
-      Moves_JSON: JSON.stringify(newMoves),
-      Status: status,
-      Winner: winnerId
+      current_fen1: newFen,
+      moves_played: JSON.stringify(newMoves),
+      game_status1: status,
+      match_result: status,
+      winner1: winnerId
     };
     const result = await zohoApi.updateGameRecord(gameId.toString(), updateData);
     const updatedGame = this.mapZohoGameToAppGame(result.data?.[0] || result.data || result) || game;
