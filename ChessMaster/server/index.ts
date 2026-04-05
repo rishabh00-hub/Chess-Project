@@ -14,6 +14,11 @@ declare global {
   namespace Express {
     interface Session {
       userId?: string;
+      pendingZohoProfile?: {
+        email: string;
+        firstName: string;
+        lastName: string;
+      };
     }
   }
 }
@@ -45,14 +50,15 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 // Session middleware setup
+const useSecureCookies = process.env.NODE_ENV === 'production';
 app.use(session({
   store: new MemoryStore({ checkPeriod: 86400000 }),
   secret: process.env.SESSION_SECRET || 'chessmaster-secret-key-123',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: true, // Works because trust proxy is set above
-    sameSite: 'none', // Required for cross-origin
+    secure: useSecureCookies,
+    sameSite: useSecureCookies ? 'none' : 'lax',
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }));

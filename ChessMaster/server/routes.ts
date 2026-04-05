@@ -5,6 +5,41 @@ import type { Server } from 'node:http';
 import { storage } from './storage.js';
 import zohoApi from './zoho-api-service.js';
 
+const aiThinkingGames = new Set<number>();
+
+// In-memory storage for friend rooms and matchmaking
+const friendRooms = new Map<string, { hostId: string; gameId?: number; guestId?: string; createdAt: number }>();
+const matchmakingQueue: Array<{ userId: string; elo: number; timestamp: number }> = [];
+
+// Helper function to find a match in the queue
+function findMatch(userId: string, userElo: number): { opponentId: string } | null {
+  const candidates = matchmakingQueue.filter(entry => 
+    entry.userId !== userId && 
+    Math.abs(entry.elo - userElo) <= 200 // Within 200 Elo points
+  );
+
+  if (candidates.length === 0) return null;
+
+  // Find the closest Elo match
+  candidates.sort((a, b) => Math.abs(a.elo - userElo) - Math.abs(b.elo - userElo));
+  return { opponentId: candidates[0].userId };
+}
+
+// Initialize aiThinkingGames from persisted games on startup
+(async () => {
+  try {
+    const allGames = await storage.getRecentGames('', 1000); // Get many games
+    for (const game of allGames) {
+      if (game.status === 'ai_thinking') {
+        aiThinkingGames.add(game.id);
+      }
+    }
+    console.log(`Initialized ${aiThinkingGames.size} ai_thinking games from storage`);
+  } catch (error) {
+    console.warn('Failed to initialize aiThinkingGames from storage:', error);
+  }
+})();
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Temporarily disable auth for UI demonstration
   // await setupAuth(app);
@@ -90,6 +125,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post('/api/users/check-username', express.json(), async (req: any, res) => {
+    try {
+      const { username } = req.body;
+      if (!username || typeof username !== 'string') {
+        return res.status(400).json({ available: false, message: 'Username is required' });
+      }
+      const existingUser = await zohoApi.getUserByUsername(username.trim());
+      res.json({ available: !existingUser });
+    } catch (error: any) {
+      console.error('Error checking username:', error);
+      res.status(500).json({ available: false, message: 'Unable to verify username' });
+    }
+  });
+
+  app.get('/api/users/pending', async (req: any, res) => {
+    try {
+      const pending = req.session?.pendingZohoProfile || null;
+      res.json(pending);
+    } catch (error) {
+      console.error('Error fetching pending onboarding profile:', error);
+      res.status(500).json({ message: 'Failed to fetch onboarding profile' });
+    }
+  });
+
+  app.post('/api/users/onboard', express.json(), async (req: any, res) => {
+    try {
+      const pending = req.session?.pendingZohoProfile;
+      if (!pending) {
+        return res.status(400).json({ message: 'No onboarding session exists' });
+      }
+      const { username, firstName, lastName } = req.body;
+      if (!username || !firstName || !lastName) {
+        return res.status(400).json({ message: 'username, firstName, and lastName are required' });
+      }
+      const sanitizedUsername = String(username).trim();
+      if (sanitizedUsername.length < 3) {
+        return res.status(400).json({ message: 'Username must be at least 3 characters' });
+      }
+      const existingUser = await zohoApi.getUserByUsername(sanitizedUsername);
+      if (existingUser) {
+        return res.status(409).json({ message: 'Username already taken' });
+      }
+
+      const result = await zohoApi.createUserProfile({
+        username: sanitizedUsername,
+        email: pending.email,
+        firstName: String(firstName).trim(),
+        lastName: String(lastName).trim(),
+        elo: 1200,
+        gamesPlayed: 0,
+        wins: 0,
+        losses: 0,
+        draws: 0
+      });
+
+      const userId = result?.data?.[0]?.ID || result?.data?.[0]?.id;
+      if (!userId) {
+        console.error('Unable to create user during onboarding', result);
+        return res.status(500).json({ message: 'Failed to create user profile' });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        console.error('Could not load newly created user from Zoho', userId);
+        return res.status(500).json({ message: 'Failed to load created user' });
+      }
+
+      req.session.userId = userId;
+      delete req.session.pendingZohoProfile;
+      req.session.save((err) => {
+        if (err) {
+          console.error('Session save failed after onboarding:', err);
+          return res.status(500).json({ message: 'Failed to save session' });
+        }
+        res.json(user);
+      });
+    } catch (error: any) {
+      console.error('Error onboarding user:', error);
+      res.status(500).json({ message: error.message || 'Onboarding failed' });
+    }
+  });
+
   // Real game creation route
   app.post('/api/games', async (req: any, res) => {
     try {
@@ -147,6 +264,172 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Logout error:', error);
       res.status(500).json({ message: 'Logout failed' });
+    }
+  });
+
+  // Friend room creation
+  app.post('/api/rooms', async (req: any, res) => {
+    try {
+      const userId = req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Not authenticated' });
+      }
+
+      // Generate unique room code
+      let roomCode: string;
+      do {
+        roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      } while (friendRooms.has(roomCode));
+
+      friendRooms.set(roomCode, {
+        hostId: userId,
+        createdAt: Date.now()
+      });
+
+      res.json({ roomCode });
+    } catch (error: any) {
+      console.error('Error creating friend room:', error);
+      res.status(500).json({ message: 'Failed to create room' });
+    }
+  });
+
+  // Join friend room
+  app.post('/api/rooms/:code/join', async (req: any, res) => {
+    try {
+      const userId = req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Not authenticated' });
+      }
+
+      const roomCode = req.params.code.toUpperCase();
+      const room = friendRooms.get(roomCode);
+
+      if (!room) {
+        return res.status(404).json({ message: 'Room not found' });
+      }
+
+      if (room.hostId === userId) {
+        return res.status(400).json({ message: 'Cannot join your own room' });
+      }
+
+      if (room.guestId) {
+        return res.status(400).json({ message: 'Room is full' });
+      }
+
+      if (room.gameId) {
+        return res.status(400).json({ message: 'Game already started' });
+      }
+
+      // Create game
+      const gameData = {
+        whitePlayerId: room.hostId,
+        blackPlayerId: userId,
+        gameMode: 'friend',
+        status: 'active'
+      };
+
+      const game = await storage.createGame(gameData);
+      if (!game) {
+        return res.status(500).json({ message: 'Failed to create game' });
+      }
+
+      // Update room
+      room.guestId = userId;
+      room.gameId = game.id;
+
+      res.json({ gameId: game.id });
+    } catch (error: any) {
+      console.error('Error joining friend room:', error);
+      res.status(500).json({ message: 'Failed to join room' });
+    }
+  });
+
+  // Enter matchmaking queue
+  app.post('/api/matchmaking/enter', async (req: any, res) => {
+    try {
+      const userId = req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Not authenticated' });
+      }
+
+      // Check if already in queue
+      const existingIndex = matchmakingQueue.findIndex(entry => entry.userId === userId);
+      if (existingIndex !== -1) {
+        return res.status(400).json({ message: 'Already in matchmaking queue' });
+      }
+
+      // Get user Elo
+      const user = await storage.getUser(userId);
+      const elo = user?.elo || 1200;
+
+      matchmakingQueue.push({
+        userId,
+        elo,
+        timestamp: Date.now()
+      });
+
+      // Try to find a match
+      const match = findMatch(userId, elo);
+      if (match) {
+        // Remove both from queue
+        matchmakingQueue.splice(matchmakingQueue.findIndex(e => e.userId === userId), 1);
+        matchmakingQueue.splice(matchmakingQueue.findIndex(e => e.userId === match.opponentId), 1);
+
+        // Create game (decide colors randomly)
+        const isWhite = Math.random() < 0.5;
+        const gameData = {
+          whitePlayerId: isWhite ? userId : match.opponentId,
+          blackPlayerId: isWhite ? match.opponentId : userId,
+          gameMode: 'online',
+          status: 'active'
+        };
+
+        const game = await storage.createGame(gameData);
+        if (game) {
+          return res.json({ gameId: game.id, opponentId: match.opponentId });
+        }
+      }
+
+      res.json({ status: 'queued' });
+    } catch (error: any) {
+      console.error('Error entering matchmaking:', error);
+      res.status(500).json({ message: 'Failed to enter matchmaking' });
+    }
+  });
+
+  // Check matchmaking status
+  app.get('/api/matchmaking/status', async (req: any, res) => {
+    try {
+      const userId = req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Not authenticated' });
+      }
+
+      const inQueue = matchmakingQueue.some(entry => entry.userId === userId);
+      res.json({ inQueue });
+    } catch (error: any) {
+      console.error('Error checking matchmaking status:', error);
+      res.status(500).json({ message: 'Failed to check status' });
+    }
+  });
+
+  // Leave matchmaking queue
+  app.delete('/api/matchmaking/leave', async (req: any, res) => {
+    try {
+      const userId = req.session?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Not authenticated' });
+      }
+
+      const index = matchmakingQueue.findIndex(entry => entry.userId === userId);
+      if (index !== -1) {
+        matchmakingQueue.splice(index, 1);
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error leaving matchmaking:', error);
+      res.status(500).json({ message: 'Failed to leave queue' });
     }
   });
 
@@ -230,6 +513,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!game) {
         return res.status(404).json({ message: "Game not found" });
       }
+      if (aiThinkingGames.has(gameId)) {
+        return res.json({ ...game, status: 'ai_thinking' });
+      }
       
       res.json(game);
     } catch (error) {
@@ -247,32 +533,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Missing required fields: from, to" });
       }
 
+      const currentGame = await storage.getGame(gameId);
+      if (!currentGame) {
+        return res.status(404).json({ message: 'Game not found' });
+      }
+      if (currentGame.status === 'ai_thinking' || aiThinkingGames.has(gameId)) {
+        return res.status(423).json({ message: 'AI is thinking, please wait' });
+      }
+
       const game = await storage.makeMove(gameId, { from, to, promotion });
-      
-      // If playing against AI and it's AI's turn, make AI move
+
       if (game.gameMode === 'ai' && game.blackPlayerId === 'ai' && game.currentTurn === 'black' && game.status === 'active') {
-        try {
-          const { ChessEngine } = await import('../shared/chessEngine.js');
-          const engine = new ChessEngine(game.currentPosition || undefined);
-          const elo = typeof game.aiDifficulty === 'number'
-            ? game.aiDifficulty
-            : typeof game.aiDifficulty === 'string'
-              ? parseInt(game.aiDifficulty, 10)
-              : 1200;
-          const aiMove = engine.getAIMove(elo);
-          
-          if (aiMove) {
-            await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1500));
-            const updatedGame = await storage.makeMove(gameId, {
+        aiThinkingGames.add(gameId);
+        const pendingGame = { ...game, status: 'ai_thinking' };
+        const difficulty = typeof game.aiDifficulty === 'number'
+          ? game.aiDifficulty
+          : typeof game.aiDifficulty === 'string'
+            ? parseInt(game.aiDifficulty, 10)
+            : 1200;
+
+        // Persist the ai_thinking status
+        await storage.updateGame(gameId, { status: 'ai_thinking' });
+
+        setTimeout(async () => {
+          try {
+            const latestGame = await storage.getGame(gameId);
+            if (!latestGame) return;
+            const { ChessEngine } = await import('../shared/chessEngine.js');
+            const engine = new ChessEngine(latestGame.currentPosition || undefined);
+            const aiMove = engine.getAIMove(difficulty);
+            if (!aiMove) return;
+            await storage.makeMove(gameId, {
               from: aiMove.from,
               to: aiMove.to,
               promotion: aiMove.promotion
             });
-            return res.json(updatedGame);
+          } catch (aiError) {
+            console.error('AI background move error:', aiError);
+          } finally {
+            aiThinkingGames.delete(gameId);
+            // Clear the persisted ai_thinking status
+            try {
+              const finalGame = await storage.getGame(gameId);
+              if (finalGame && finalGame.status === 'ai_thinking') {
+                await storage.updateGame(gameId, { status: 'active' });
+              }
+            } catch (clearError) {
+              console.error('Failed to clear ai_thinking status:', clearError);
+            }
           }
-        } catch (aiError) {
-          console.error("AI move error:", aiError);
-        }
+        }, 500 + Math.random() * 1500);
+
+        return res.json(pendingGame);
       }
       
       res.json(game);
@@ -331,57 +643,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // CRITICAL FIX: Enforce valid database user creation
       let userId: string | undefined;
 
-      // If Zoho returned a userId, use it
       if (authResult?.userId) {
         userId = authResult.userId;
         console.log(`✓ Using userId from Zoho auth: ${userId}`);
-      } else {
-        console.warn("⚠️ No userId from Zoho auth, creating new user in database...");
-        
-        // If Zoho didn't return a userId, forcefully create one in the database
-        try {
-          const newUserId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          const username = `Player_${Math.floor(Math.random() * 10000)}`;
-          
-          const newUser = await storage.upsertUser({
-            id: newUserId,
-            username: username,
-            email: `${username}@chessmaster.app`,
-            level: 1,
-            xp: 0,
-            totalPoints: 0,
-            elo: 1200,
-            gamesPlayed: 0,
-            wins: 0,
-            losses: 0,
-            draws: 0,
-            resignations: 0,
-            currentStreak: 0,
-            bestStreak: 0,
-            tutorialProgress: 0,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-          
-          if (newUser && newUser.id) {
-            // If we generated a temp id earlier, log the Zoho-assigned ID for clarity
-            if (newUser.id !== newUserId) {
-              console.log(`✓ Created new database user (Zoho id ${newUser.id}, local id ${newUserId})`);
-            } else {
-              console.log(`✓ Created new database user: ${newUser.id}`);
-            }
-            userId = newUser.id;
-          } else {
-            console.error("❌ User creation returned invalid user object", newUser);
-            throw new Error("User creation returned invalid user object");
+      } else if (authResult?.success && authResult?.isNew && authResult?.userInfo) {
+        const { email, firstName, lastName } = authResult.userInfo;
+        req.session.pendingZohoProfile = { email, firstName, lastName };
+        req.session.save((err) => {
+          if (err) {
+            console.error('❌ Session save error for pending onboarding:', err);
+            return res.redirect('/?error=session_failed');
           }
-        } catch (dbErr) {
-          console.error("❌ DB User Creation Error:", dbErr);
-          return res.redirect('/?error=user_creation_failed');
-        }
+          return res.redirect('/onboarding');
+        });
+        return;
+      } else {
+        console.error('❌ Zoho auth returned no existing user and no pending user info');
+        return res.redirect('/?error=auth_failed');
       }
 
-      // CRITICAL: Check if userId is valid before setting session
       if (!userId) {
         console.error("❌ Critical Error: No valid userId available after all attempts");
         return res.redirect('/?error=no_valid_user_id');

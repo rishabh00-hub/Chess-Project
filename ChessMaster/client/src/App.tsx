@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/Landing";
+import Onboarding from "@/pages/Onboarding";
 import Home from "@/pages/Home";
 import Leaderboard from "@/pages/Leaderboard";
 import Play from "@/pages/Play";
@@ -30,6 +31,7 @@ function Router() {
     return (
       <Switch>
         <Route path="/" component={Landing} />
+        <Route path="/onboarding" component={Onboarding} />
         <Route component={NotFound} />
       </Switch>
     );
@@ -45,6 +47,7 @@ function Router() {
           <Route path="/game/:id" component={Game} />
           <Route path="/stats" component={Stats} />
           <Route path="/tutorial" component={Tutorial} />
+          <Route path="/onboarding" component={Onboarding} />
           <Route component={NotFound} />
         </Switch>
         <BottomNavigation />

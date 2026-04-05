@@ -6,6 +6,7 @@ interface ChessBoardProps {
   interactive?: boolean;
   position?: string;
   currentTurn?: 'white' | 'black';
+  playerColor?: 'white' | 'black';
   onMove?: (move: { from: string; to: string; promotion?: string }) => void;
   disabled?: boolean;
   showStatus?: boolean;
@@ -21,6 +22,7 @@ export default function ChessBoard({
   interactive = false, 
   position = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
   currentTurn = 'white',
+  playerColor = 'white',
   onMove,
   disabled = false,
   showStatus = true
@@ -130,6 +132,8 @@ export default function ChessBoard({
     return isCheck && piece?.toLowerCase() === 'k' && isPieceOwnedByPlayer(piece, currentTurn);
   };
 
+  const needsFlip = playerColor === 'black';
+
   return (
     <div className="flex flex-col gap-3" data-testid="chessboard-container">
       {showStatus && (
@@ -163,18 +167,20 @@ export default function ChessBoard({
         className={`grid grid-cols-8 gap-0 ${classes.board} mx-auto border-4 border-slate-700 rounded-xl overflow-hidden shadow-2xl`}
         data-testid="chessboard-grid"
       >
-        {board.map((row, rowIndex) =>
-          row.map((piece, colIndex) => {
-            const square = coordsToSquare(rowIndex, colIndex);
-            const isLight = isLightSquare(rowIndex, colIndex);
-            const selected = isSelected(rowIndex, colIndex);
-            const legal = isLegalMove(rowIndex, colIndex);
-            const lastMoveHighlight = isLastMove(rowIndex, colIndex);
-            const kingCheck = isKingInCheck(rowIndex, colIndex);
+        {(needsFlip ? [...board].reverse() : board).map((row, rowIndex) => {
+          const actualRowIndex = needsFlip ? 7 - rowIndex : rowIndex;
+          return (needsFlip ? [...row].reverse() : row).map((piece, colIndex) => {
+            const actualColIndex = needsFlip ? 7 - colIndex : colIndex;
+            const square = coordsToSquare(actualRowIndex, actualColIndex);
+            const isLight = isLightSquare(actualRowIndex, actualColIndex);
+            const selected = isSelected(actualRowIndex, actualColIndex);
+            const legal = isLegalMove(actualRowIndex, actualColIndex);
+            const lastMoveHighlight = isLastMove(actualRowIndex, actualColIndex);
+            const kingCheck = isKingInCheck(actualRowIndex, actualColIndex);
 
             return (
               <div
-                key={`${rowIndex}-${colIndex}`}
+                key={`${actualRowIndex}-${actualColIndex}`}
                 data-testid={`square-${square}`}
                 className={`
                   ${classes.square} 
@@ -188,7 +194,7 @@ export default function ChessBoard({
                   ${interactive && !disabled ? 'cursor-pointer hover:ring-2 hover:ring-blue-400' : ''}
                   transition-all duration-150
                 `}
-                onClick={() => handleSquareClick(rowIndex, colIndex)}
+                onClick={() => handleSquareClick(actualRowIndex, actualColIndex)}
               >
                 {piece && (
                   <span 
@@ -215,20 +221,20 @@ export default function ChessBoard({
                   </div>
                 )}
 
-                {rowIndex === 7 && (
+                {actualRowIndex === 7 && (
                   <span className={`absolute bottom-0.5 right-0.5 text-[10px] font-semibold ${isLight ? 'text-amber-700' : 'text-amber-200'}`}>
-                    {String.fromCharCode(97 + colIndex)}
+                    {String.fromCharCode(97 + actualColIndex)}
                   </span>
                 )}
-                {colIndex === 0 && (
+                {actualColIndex === 0 && (
                   <span className={`absolute top-0.5 left-0.5 text-[10px] font-semibold ${isLight ? 'text-amber-700' : 'text-amber-200'}`}>
-                    {8 - rowIndex}
+                    {8 - actualRowIndex}
                   </span>
                 )}
               </div>
             );
-          })
-        )}
+          });
+        })}
       </div>
 
       {showStatus && (

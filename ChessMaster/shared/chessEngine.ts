@@ -18,7 +18,20 @@ export interface Move {
   notation?: string;
 }
 
-export type Piece = 'p' | 'n' | 'b' | 'r' | 'q' | 'k' | 'P' | 'N' | 'B' | 'R' | 'Q' | 'K' | null;
+export type Piece =
+  | 'p'
+  | 'n'
+  | 'b'
+  | 'r'
+  | 'q'
+  | 'k'
+  | 'P'
+  | 'N'
+  | 'B'
+  | 'R'
+  | 'Q'
+  | 'K'
+  | null;
 export type Board = Piece[][];
 
 export class ChessEngine {
@@ -29,7 +42,9 @@ export class ChessEngine {
   private halfMoveClock: number;
   private fullMoveNumber: number;
 
-  constructor(fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1') {
+  constructor(
+    fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+  ) {
     const position = this.parseFEN(fen);
     this.board = this.fenToBoard(position.fen);
     this.turn = position.turn;
@@ -46,77 +61,73 @@ export class ChessEngine {
       turn: parts[1] === 'w' ? 'white' : 'black',
       castling: parts[2] || '-',
       enPassant: parts[3] || '-',
-      halfmove: parseInt(parts[4]) || 0,
-      fullmove: parseInt(parts[5]) || 1
+      halfmove: parseInt(parts[4], 10) || 0,
+      fullmove: parseInt(parts[5], 10) || 1,
     };
   }
 
   private fenToBoard(fen: string): Board {
-    const board: Board = [];
-    const rows = fen.split('/');
-    
-    for (const row of rows) {
-      const boardRow: Piece[] = [];
-      for (const char of row) {
-        if (char >= '1' && char <= '8') {
-          const emptySquares = parseInt(char);
-          for (let i = 0; i < emptySquares; i++) {
-            boardRow.push(null);
+    return fen.split('/').map((rank) => {
+      const row: Piece[] = [];
+      for (const char of rank) {
+        if (/[1-8]/.test(char)) {
+          const emptyCount = parseInt(char, 10);
+          for (let i = 0; i < emptyCount; i++) {
+            row.push(null);
           }
         } else {
-          boardRow.push(char as Piece);
+          row.push(char as Piece);
         }
       }
-      board.push(boardRow);
-    }
-    
-    return board;
+      return row;
+    });
   }
 
   private boardToFen(): string {
-    let fen = '';
-    for (let row = 0; row < 8; row++) {
-      let emptyCount = 0;
-      for (let col = 0; col < 8; col++) {
-        const piece = this.board[row][col];
-        if (piece === null) {
-          emptyCount++;
-        } else {
-          if (emptyCount > 0) {
-            fen += emptyCount;
-            emptyCount = 0;
+    return this.board
+      .map((row) => {
+        let fenRow = '';
+        let emptyCount = 0;
+        for (const piece of row) {
+          if (piece === null) {
+            emptyCount++;
+          } else {
+            if (emptyCount > 0) {
+              fenRow += emptyCount;
+              emptyCount = 0;
+            }
+            fenRow += piece;
           }
-          fen += piece;
         }
-      }
-      if (emptyCount > 0) fen += emptyCount;
-      if (row < 7) fen += '/';
-    }
-    return fen;
+        if (emptyCount > 0) fenRow += emptyCount;
+        return fenRow;
+      })
+      .join('/');
   }
 
   public exportFEN(): string {
-    return `${this.boardToFen()} ${this.turn === 'white' ? 'w' : 'b'} ${this.castlingRights} ${this.enPassantSquare} ${this.halfMoveClock} ${this.fullMoveNumber}`;
+    const castling = this.castlingRights === '' ? '-' : this.castlingRights;
+    return `${this.boardToFen()} ${this.turn === 'white' ? 'w' : 'b'} ${castling} ${this.enPassantSquare} ${this.halfMoveClock} ${this.fullMoveNumber}`;
   }
 
   public getPosition(): Position {
     return {
       fen: this.boardToFen(),
       turn: this.turn,
-      castling: this.castlingRights,
+      castling: this.castlingRights === '' ? '-' : this.castlingRights,
       enPassant: this.enPassantSquare,
       halfmove: this.halfMoveClock,
-      fullmove: this.fullMoveNumber
+      fullmove: this.fullMoveNumber,
     };
   }
 
   public getBoard(): Board {
-    return this.board.map(row => [...row]);
+    return this.board.map((row) => [...row]);
   }
 
   private squareToCoords(square: string): [number, number] {
     const col = square.charCodeAt(0) - 'a'.charCodeAt(0);
-    const row = 8 - parseInt(square[1]);
+    const row = 8 - parseInt(square[1], 10);
     return [row, col];
   }
 
@@ -124,14 +135,20 @@ export class ChessEngine {
     return String.fromCharCode('a'.charCodeAt(0) + col) + (8 - row);
   }
 
+  private isValidCoords(row: number, col: number): boolean {
+    return row >= 0 && row < 8 && col >= 0 && col < 8;
+  }
+
   public getPieceAt(square: string): Piece {
     const [row, col] = this.squareToCoords(square);
-    return this.board[row][col];
+    return this.isValidCoords(row, col) ? this.board[row][col] : null;
   }
 
   private setPieceAt(square: string, piece: Piece): void {
     const [row, col] = this.squareToCoords(square);
-    this.board[row][col] = piece;
+    if (this.isValidCoords(row, col)) {
+      this.board[row][col] = piece;
+    }
   }
 
   private isWhitePiece(piece: Piece): boolean {
@@ -139,7 +156,7 @@ export class ChessEngine {
   }
 
   private isBlackPiece(piece: Piece): boolean {
-    return piece !== null && piece === piece.toLowerCase() && piece !== piece.toUpperCase();
+    return piece !== null && piece === piece.toLowerCase();
   }
 
   private isOwnPiece(piece: Piece, color: 'white' | 'black'): boolean {
@@ -152,6 +169,19 @@ export class ChessEngine {
     return color === 'white' ? this.isBlackPiece(piece) : this.isWhitePiece(piece);
   }
 
+  private normalizeCastlingRights(rights: string): string {
+    const normalized = ['K', 'Q', 'k', 'q'].filter((ch) => rights.includes(ch)).join('');
+    return normalized === '' ? '-' : normalized;
+  }
+
+  private removeCastlingRight(right: 'K' | 'Q' | 'k' | 'q'): void {
+    this.castlingRights = this.normalizeCastlingRights(this.castlingRights.replace(right, ''));
+  }
+
+  private isSquareEmpty(square: string): boolean {
+    return this.getPieceAt(square) === null;
+  }
+
   public getValidMoves(square: string): string[] {
     const piece = this.getPieceAt(square);
     if (!piece || !this.isOwnPiece(piece, this.turn)) return [];
@@ -160,48 +190,71 @@ export class ChessEngine {
     let moves: string[] = [];
 
     switch (pieceType) {
-      case 'p': moves = this.getPawnMoves(square); break;
-      case 'n': moves = this.getKnightMoves(square); break;
-      case 'b': moves = this.getBishopMoves(square); break;
-      case 'r': moves = this.getRookMoves(square); break;
-      case 'q': moves = this.getQueenMoves(square); break;
-      case 'k': moves = this.getKingMoves(square); break;
+      case 'p':
+        moves = this.getPawnMoves(square);
+        break;
+      case 'n':
+        moves = this.getKnightMoves(square);
+        break;
+      case 'b':
+        moves = this.getBishopMoves(square);
+        break;
+      case 'r':
+        moves = this.getRookMoves(square);
+        break;
+      case 'q':
+        moves = this.getQueenMoves(square);
+        break;
+      case 'k':
+        moves = this.getKingMoves(square);
+        break;
     }
 
-    return moves.filter(to => !this.wouldBeInCheck(square, to));
+    return moves.filter((to) => !this.wouldBeInCheck(square, to));
   }
 
   private getPawnMoves(square: string): string[] {
     const moves: string[] = [];
     const [row, col] = this.squareToCoords(square);
-    const piece = this.board[row][col];
+    const piece = this.getPieceAt(square);
     const isWhite = this.isWhitePiece(piece);
     const direction = isWhite ? -1 : 1;
     const startRow = isWhite ? 6 : 1;
 
-    const forward = row + direction;
-    if (forward >= 0 && forward < 8 && this.board[forward][col] === null) {
-      moves.push(this.coordsToSquare(forward, col));
-
+    const forwardRow = row + direction;
+    if (this.isValidCoords(forwardRow, col) && this.board[forwardRow][col] === null) {
+      moves.push(this.coordsToSquare(forwardRow, col));
       if (row === startRow) {
-        const doubleForward = row + 2 * direction;
-        if (this.board[doubleForward][col] === null) {
-          moves.push(this.coordsToSquare(doubleForward, col));
+        const doubleRow = row + direction * 2;
+        if (this.board[doubleRow][col] === null) {
+          moves.push(this.coordsToSquare(doubleRow, col));
         }
       }
     }
 
-    for (const dcol of [-1, 1]) {
-      const newCol = col + dcol;
-      if (newCol >= 0 && newCol < 8 && forward >= 0 && forward < 8) {
-        const targetPiece = this.board[forward][newCol];
-        if (targetPiece && this.isOpponentPiece(targetPiece, this.turn)) {
-          moves.push(this.coordsToSquare(forward, newCol));
-        }
-        
-        const targetSquare = this.coordsToSquare(forward, newCol);
-        if (targetSquare === this.enPassantSquare) {
-          moves.push(targetSquare);
+    for (const colOffset of [-1, 1]) {
+      const captureCol = col + colOffset;
+      if (!this.isValidCoords(forwardRow, captureCol)) continue;
+
+      const captureSquare = this.coordsToSquare(forwardRow, captureCol);
+      const targetPiece = this.getPieceAt(captureSquare);
+      if (targetPiece && this.isOpponentPiece(targetPiece, this.turn)) {
+        moves.push(captureSquare);
+      }
+
+      if (
+        this.enPassantSquare !== '-' &&
+        captureSquare === this.enPassantSquare
+      ) {
+        const capturedPawnRow = row;
+        const capturedPawnSquare = this.coordsToSquare(capturedPawnRow, captureCol);
+        const capturedPawn = this.getPieceAt(capturedPawnSquare);
+        if (
+          capturedPawn &&
+          this.isOpponentPiece(capturedPawn, this.turn) &&
+          capturedPawn.toLowerCase() === 'p'
+        ) {
+          moves.push(captureSquare);
         }
       }
     }
@@ -212,54 +265,81 @@ export class ChessEngine {
   private getKnightMoves(square: string): string[] {
     const moves: string[] = [];
     const [row, col] = this.squareToCoords(square);
-    const offsets = [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]];
+    const offsets = [
+      [-2, -1],
+      [-2, 1],
+      [-1, -2],
+      [-1, 2],
+      [1, -2],
+      [1, 2],
+      [2, -1],
+      [2, 1],
+    ];
 
-    for (const [drow, dcol] of offsets) {
-      const newRow = row + drow;
-      const newCol = col + dcol;
-      if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
-        const targetPiece = this.board[newRow][newCol];
-        if (!targetPiece || this.isOpponentPiece(targetPiece, this.turn)) {
-          moves.push(this.coordsToSquare(newRow, newCol));
-        }
+    for (const [dRow, dCol] of offsets) {
+      const newRow = row + dRow;
+      const newCol = col + dCol;
+      if (!this.isValidCoords(newRow, newCol)) continue;
+      const targetSquare = this.coordsToSquare(newRow, newCol);
+      const targetPiece = this.getPieceAt(targetSquare);
+      if (!targetPiece || this.isOpponentPiece(targetPiece, this.turn)) {
+        moves.push(targetSquare);
       }
     }
-
     return moves;
   }
 
   private getBishopMoves(square: string): string[] {
-    return this.getSlidingMoves(square, [[1, 1], [1, -1], [-1, 1], [-1, -1]]);
+    return this.getSlidingMoves(square, [
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
+    ]);
   }
 
   private getRookMoves(square: string): string[] {
-    return this.getSlidingMoves(square, [[0, 1], [0, -1], [1, 0], [-1, 0]]);
+    return this.getSlidingMoves(square, [
+      [0, 1],
+      [0, -1],
+      [1, 0],
+      [-1, 0],
+    ]);
   }
 
   private getQueenMoves(square: string): string[] {
-    return this.getSlidingMoves(square, [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]);
+    return this.getSlidingMoves(square, [
+      [0, 1],
+      [0, -1],
+      [1, 0],
+      [-1, 0],
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
+    ]);
   }
 
   private getSlidingMoves(square: string, directions: number[][]): string[] {
     const moves: string[] = [];
     const [row, col] = this.squareToCoords(square);
 
-    for (const [drow, dcol] of directions) {
-      let newRow = row + drow;
-      let newCol = col + dcol;
-
-      while (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
-        const targetPiece = this.board[newRow][newCol];
-        if (!targetPiece) {
-          moves.push(this.coordsToSquare(newRow, newCol));
+    for (const [rowDelta, colDelta] of directions) {
+      let newRow = row + rowDelta;
+      let newCol = col + colDelta;
+      while (this.isValidCoords(newRow, newCol)) {
+        const targetSquare = this.coordsToSquare(newRow, newCol);
+        const targetPiece = this.getPieceAt(targetSquare);
+        if (targetPiece === null) {
+          moves.push(targetSquare);
         } else {
           if (this.isOpponentPiece(targetPiece, this.turn)) {
-            moves.push(this.coordsToSquare(newRow, newCol));
+            moves.push(targetSquare);
           }
           break;
         }
-        newRow += drow;
-        newCol += dcol;
+        newRow += rowDelta;
+        newCol += colDelta;
       }
     }
 
@@ -269,16 +349,25 @@ export class ChessEngine {
   private getKingMoves(square: string): string[] {
     const moves: string[] = [];
     const [row, col] = this.squareToCoords(square);
-    const offsets = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    const directions = [
+      [0, 1],
+      [0, -1],
+      [1, 0],
+      [-1, 0],
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
+    ];
 
-    for (const [drow, dcol] of offsets) {
-      const newRow = row + drow;
-      const newCol = col + dcol;
-      if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
-        const targetPiece = this.board[newRow][newCol];
-        if (!targetPiece || this.isOpponentPiece(targetPiece, this.turn)) {
-          moves.push(this.coordsToSquare(newRow, newCol));
-        }
+    for (const [rowDelta, colDelta] of directions) {
+      const newRow = row + rowDelta;
+      const newCol = col + colDelta;
+      if (!this.isValidCoords(newRow, newCol)) continue;
+      const targetSquare = this.coordsToSquare(newRow, newCol);
+      const targetPiece = this.getPieceAt(targetSquare);
+      if (!targetPiece || this.isOpponentPiece(targetPiece, this.turn)) {
+        moves.push(targetSquare);
       }
     }
 
@@ -303,115 +392,234 @@ export class ChessEngine {
 
   private canCastleKingside(color: 'white' | 'black'): boolean {
     const row = color === 'white' ? 7 : 0;
-    return this.board[row][5] === null && 
-           this.board[row][6] === null &&
-           !this.isSquareAttacked(this.coordsToSquare(row, 4), color) &&
-           !this.isSquareAttacked(this.coordsToSquare(row, 5), color) &&
-           !this.isSquareAttacked(this.coordsToSquare(row, 6), color);
+    const kingSquare = this.coordsToSquare(row, 4);
+    const rookSquare = this.coordsToSquare(row, 7);
+    const fSquare = this.coordsToSquare(row, 5);
+    const gSquare = this.coordsToSquare(row, 6);
+
+    const king = this.getPieceAt(kingSquare);
+    const rook = this.getPieceAt(rookSquare);
+    if (
+      !king ||
+      !rook ||
+      !this.isOwnPiece(king, color) ||
+      !this.isOwnPiece(rook, color) ||
+      king.toLowerCase() !== 'k' ||
+      rook.toLowerCase() !== 'r'
+    ) {
+      return false;
+    }
+
+    if (this.getPieceAt(fSquare) !== null || this.getPieceAt(gSquare) !== null) {
+      return false;
+    }
+
+    if (this.isCheck()) return false;
+    const opponent = color === 'white' ? 'black' : 'white';
+    if (this.isSquareAttacked(fSquare, opponent) || this.isSquareAttacked(gSquare, opponent)) {
+      return false;
+    }
+
+    return true;
   }
 
   private canCastleQueenside(color: 'white' | 'black'): boolean {
     const row = color === 'white' ? 7 : 0;
-    return this.board[row][1] === null && 
-           this.board[row][2] === null &&
-           this.board[row][3] === null &&
-           !this.isSquareAttacked(this.coordsToSquare(row, 4), color) &&
-           !this.isSquareAttacked(this.coordsToSquare(row, 3), color) &&
-           !this.isSquareAttacked(this.coordsToSquare(row, 2), color);
+    const kingSquare = this.coordsToSquare(row, 4);
+    const rookSquare = this.coordsToSquare(row, 0);
+    const dSquare = this.coordsToSquare(row, 3);
+    const cSquare = this.coordsToSquare(row, 2);
+    const bSquare = this.coordsToSquare(row, 1);
+
+    const king = this.getPieceAt(kingSquare);
+    const rook = this.getPieceAt(rookSquare);
+    if (
+      !king ||
+      !rook ||
+      !this.isOwnPiece(king, color) ||
+      !this.isOwnPiece(rook, color) ||
+      king.toLowerCase() !== 'k' ||
+      rook.toLowerCase() !== 'r'
+    ) {
+      return false;
+    }
+
+    if (
+      this.getPieceAt(dSquare) !== null ||
+      this.getPieceAt(cSquare) !== null ||
+      this.getPieceAt(bSquare) !== null
+    ) {
+      return false;
+    }
+
+    if (this.isCheck()) return false;
+    const opponent = color === 'white' ? 'black' : 'white';
+    if (this.isSquareAttacked(dSquare, opponent) || this.isSquareAttacked(cSquare, opponent)) {
+      return false;
+    }
+
+    return true;
   }
 
   private isSquareAttacked(square: string, byColor: 'white' | 'black'): boolean {
-    const opponentColor = byColor === 'white' ? 'black' : 'white';
-    const originalTurn = this.turn;
-    this.turn = opponentColor;
+    const [targetRow, targetCol] = this.squareToCoords(square);
 
-    for (let row = 0; row < 8; row++) {
-      for (let col = 0; col < 8; col++) {
-        const piece = this.board[row][col];
-        if (piece && this.isOwnPiece(piece, opponentColor)) {
-          const from = this.coordsToSquare(row, col);
-          const pieceType = piece.toLowerCase();
-          let attacks: string[] = [];
+    const pawnDirection = byColor === 'white' ? -1 : 1;
+    const pawnRow = targetRow - pawnDirection;
+    for (const colOffset of [-1, 1]) {
+      const pawnCol = targetCol + colOffset;
+      if (!this.isValidCoords(pawnRow, pawnCol)) continue;
+      const originSquare = this.coordsToSquare(pawnRow, pawnCol);
+      const piece = this.getPieceAt(originSquare);
+      if (piece && this.isOwnPiece(piece, byColor) && piece.toLowerCase() === 'p') {
+        return true;
+      }
+    }
 
-          switch (pieceType) {
-            case 'p': attacks = this.getPawnAttacks(from, opponentColor); break;
-            case 'n': attacks = this.getKnightMoves(from); break;
-            case 'b': attacks = this.getBishopMoves(from); break;
-            case 'r': attacks = this.getRookMoves(from); break;
-            case 'q': attacks = this.getQueenMoves(from); break;
-            case 'k': attacks = this.getKingAttacks(from); break;
-          }
+    const knightOffsets = [
+      [-2, -1],
+      [-2, 1],
+      [-1, -2],
+      [-1, 2],
+      [1, -2],
+      [1, 2],
+      [2, -1],
+      [2, 1],
+    ];
+    for (const [dRow, dCol] of knightOffsets) {
+      const attackerRow = targetRow + dRow;
+      const attackerCol = targetCol + dCol;
+      if (!this.isValidCoords(attackerRow, attackerCol)) continue;
+      const attackerSquare = this.coordsToSquare(attackerRow, attackerCol);
+      const attackerPiece = this.getPieceAt(attackerSquare);
+      if (attackerPiece && this.isOwnPiece(attackerPiece, byColor) && attackerPiece.toLowerCase() === 'n') {
+        return true;
+      }
+    }
 
-          if (attacks.includes(square)) {
-            this.turn = originalTurn;
+    const kingOffsets = [
+      [0, 1],
+      [0, -1],
+      [1, 0],
+      [-1, 0],
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
+    ];
+    for (const [dRow, dCol] of kingOffsets) {
+      const attackerRow = targetRow + dRow;
+      const attackerCol = targetCol + dCol;
+      if (!this.isValidCoords(attackerRow, attackerCol)) continue;
+      const attackerSquare = this.coordsToSquare(attackerRow, attackerCol);
+      const attackerPiece = this.getPieceAt(attackerSquare);
+      if (attackerPiece && this.isOwnPiece(attackerPiece, byColor) && attackerPiece.toLowerCase() === 'k') {
+        return true;
+      }
+    }
+
+    const orthogonalDirs = [
+      [0, 1],
+      [0, -1],
+      [1, 0],
+      [-1, 0],
+    ];
+    for (const [dRow, dCol] of orthogonalDirs) {
+      let checkRow = targetRow + dRow;
+      let checkCol = targetCol + dCol;
+      while (this.isValidCoords(checkRow, checkCol)) {
+        const checkSquare = this.coordsToSquare(checkRow, checkCol);
+        const checkPiece = this.getPieceAt(checkSquare);
+        if (checkPiece !== null) {
+          if (this.isOwnPiece(checkPiece, byColor) && ['r', 'q'].includes(checkPiece.toLowerCase())) {
             return true;
           }
+          break;
         }
+        checkRow += dRow;
+        checkCol += dCol;
       }
     }
 
-    this.turn = originalTurn;
+    const diagonalDirs = [
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
+    ];
+    for (const [dRow, dCol] of diagonalDirs) {
+      let checkRow = targetRow + dRow;
+      let checkCol = targetCol + dCol;
+      while (this.isValidCoords(checkRow, checkCol)) {
+        const checkSquare = this.coordsToSquare(checkRow, checkCol);
+        const checkPiece = this.getPieceAt(checkSquare);
+        if (checkPiece !== null) {
+          if (this.isOwnPiece(checkPiece, byColor) && ['b', 'q'].includes(checkPiece.toLowerCase())) {
+            return true;
+          }
+          break;
+        }
+        checkRow += dRow;
+        checkCol += dCol;
+      }
+    }
+
     return false;
-  }
-
-  private getPawnAttacks(square: string, color: 'white' | 'black'): string[] {
-    const attacks: string[] = [];
-    const [row, col] = this.squareToCoords(square);
-    const direction = color === 'white' ? -1 : 1;
-    const forward = row + direction;
-
-    for (const dcol of [-1, 1]) {
-      const newCol = col + dcol;
-      if (newCol >= 0 && newCol < 8 && forward >= 0 && forward < 8) {
-        attacks.push(this.coordsToSquare(forward, newCol));
-      }
-    }
-
-    return attacks;
-  }
-
-  private getKingAttacks(square: string): string[] {
-    const attacks: string[] = [];
-    const [row, col] = this.squareToCoords(square);
-    const offsets = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]];
-
-    for (const [drow, dcol] of offsets) {
-      const newRow = row + drow;
-      const newCol = col + dcol;
-      if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
-        attacks.push(this.coordsToSquare(newRow, newCol));
-      }
-    }
-
-    return attacks;
   }
 
   private wouldBeInCheck(from: string, to: string): boolean {
     const piece = this.getPieceAt(from);
-    const captured = this.getPieceAt(to);
-    
+    if (!piece) return false;
+
+    const savedBoard = this.board.map((row) => [...row]);
+    const savedEnPassant = this.enPassantSquare;
+    const savedHalfmove = this.halfMoveClock;
+    const savedFullmove = this.fullMoveNumber;
+    const savedCastling = this.castlingRights;
+    const savedTurn = this.turn;
+
+    const [fromRow, fromCol] = this.squareToCoords(from);
+    const [toRow, toCol] = this.squareToCoords(to);
+    const isEnPassantCapture =
+      piece.toLowerCase() === 'p' &&
+      this.enPassantSquare !== '-' &&
+      to === this.enPassantSquare &&
+      this.isSquareEmpty(to);
+
+    const capturedSquare = isEnPassantCapture
+      ? this.coordsToSquare(fromRow, toCol)
+      : to;
+    const capturedPiece = this.getPieceAt(capturedSquare);
+
     this.setPieceAt(to, piece);
     this.setPieceAt(from, null);
-    
-    const inCheck = this.isCheck();
-    
-    this.setPieceAt(from, piece);
-    this.setPieceAt(to, captured);
-    
-    return inCheck;
+    if (isEnPassantCapture) {
+      this.setPieceAt(capturedSquare, null);
+    }
+
+    const check = this.isCheck();
+    this.board = savedBoard.map((row) => [...row]);
+    this.enPassantSquare = savedEnPassant;
+    this.halfMoveClock = savedHalfmove;
+    this.fullMoveNumber = savedFullmove;
+    this.castlingRights = savedCastling;
+    this.turn = savedTurn;
+
+    return check;
   }
 
   public isCheck(): boolean {
     const kingSquare = this.findKing(this.turn);
     if (!kingSquare) return false;
-    return this.isSquareAttacked(kingSquare, this.turn);
+    const opponent = this.turn === 'white' ? 'black' : 'white';
+    return this.isSquareAttacked(kingSquare, opponent);
   }
 
   private findKing(color: 'white' | 'black'): string | null {
-    const king = color === 'white' ? 'K' : 'k';
+    const target = color === 'white' ? 'K' : 'k';
     for (let row = 0; row < 8; row++) {
       for (let col = 0; col < 8; col++) {
-        if (this.board[row][col] === king) {
+        if (this.board[row][col] === target) {
           return this.coordsToSquare(row, col);
         }
       }
@@ -427,32 +635,48 @@ export class ChessEngine {
     if (!this.isValidMove(move.from, move.to)) return false;
 
     const piece = this.getPieceAt(move.from);
-    const captured = this.getPieceAt(move.to);
-    const pieceType = piece?.toLowerCase();
+    if (!piece) return false;
+    const pieceType = piece.toLowerCase();
+    const [fromRow, fromCol] = this.squareToCoords(move.from);
+    const [toRow, toCol] = this.squareToCoords(move.to);
+
+    const isEnPassantCapture =
+      pieceType === 'p' &&
+      this.enPassantSquare !== '-' &&
+      move.to === this.enPassantSquare &&
+      this.isSquareEmpty(move.to);
+
+    const capturedSquare = isEnPassantCapture
+      ? this.coordsToSquare(fromRow, toCol)
+      : move.to;
+
+    const capturedPiece = this.getPieceAt(capturedSquare);
+    move.captured = capturedPiece || undefined;
+    move.piece = piece;
 
     this.setPieceAt(move.to, piece);
     this.setPieceAt(move.from, null);
-
-    move.piece = piece!;
-    move.captured = captured || undefined;
+    if (isEnPassantCapture) {
+      this.setPieceAt(capturedSquare, null);
+      move.enPassant = true;
+    }
 
     if (pieceType === 'p') {
-      const [fromRow] = this.squareToCoords(move.from);
-      const [toRow, toCol] = this.squareToCoords(move.to);
-      
       if (Math.abs(toRow - fromRow) === 2) {
-        this.enPassantSquare = this.coordsToSquare((fromRow + toRow) / 2, toCol);
+        this.enPassantSquare = this.coordsToSquare(
+          fromRow + (toRow - fromRow) / 2,
+          fromCol
+        );
       } else {
-        if (move.to === this.enPassantSquare) {
-          move.enPassant = true;
-          const capturedRow = this.turn === 'white' ? toRow + 1 : toRow - 1;
-          this.setPieceAt(this.coordsToSquare(capturedRow, toCol), null);
-        }
         this.enPassantSquare = '-';
       }
 
       if (toRow === 0 || toRow === 7) {
-        const promotionPiece = move.promotion || (this.turn === 'white' ? 'Q' : 'q');
+        const promotionPiece = move.promotion
+          ? move.promotion
+          : this.turn === 'white'
+          ? 'Q'
+          : 'q';
         this.setPieceAt(move.to, promotionPiece as Piece);
         move.promotion = promotionPiece;
       }
@@ -461,42 +685,45 @@ export class ChessEngine {
     }
 
     if (pieceType === 'k') {
-      const [, fromCol] = this.squareToCoords(move.from);
-      const [, toCol] = this.squareToCoords(move.to);
-      
-      if (Math.abs(toCol - fromCol) === 2) {
+      const isCastle = Math.abs(toCol - fromCol) === 2;
+      if (isCastle) {
         move.castle = true;
-        const isKingside = toCol > fromCol;
-        const [row] = this.squareToCoords(move.to);
-        
-        if (isKingside) {
-          const rook = this.getPieceAt(this.coordsToSquare(row, 7));
-          this.setPieceAt(this.coordsToSquare(row, 7), null);
-          this.setPieceAt(this.coordsToSquare(row, 5), rook);
-        } else {
-          const rook = this.getPieceAt(this.coordsToSquare(row, 0));
-          this.setPieceAt(this.coordsToSquare(row, 0), null);
-          this.setPieceAt(this.coordsToSquare(row, 3), rook);
-        }
+        const rookFrom = this.coordsToSquare(fromRow, toCol > fromCol ? 7 : 0);
+        const rookTo = this.coordsToSquare(fromRow, toCol > fromCol ? 5 : 3);
+        const rookPiece = this.getPieceAt(rookFrom);
+        this.setPieceAt(rookFrom, null);
+        this.setPieceAt(rookTo, rookPiece);
       }
-
       if (this.turn === 'white') {
-        this.castlingRights = this.castlingRights.replace(/[KQ]/g, '');
+        this.castlingRights = this.normalizeCastlingRights(
+          this.castlingRights.replace(/[KQ]/g, '')
+        );
       } else {
-        this.castlingRights = this.castlingRights.replace(/[kq]/g, '');
+        this.castlingRights = this.normalizeCastlingRights(
+          this.castlingRights.replace(/[kq]/g, '')
+        );
       }
     }
 
     if (pieceType === 'r') {
-      if (move.from === 'a1') this.castlingRights = this.castlingRights.replace('Q', '');
-      if (move.from === 'h1') this.castlingRights = this.castlingRights.replace('K', '');
-      if (move.from === 'a8') this.castlingRights = this.castlingRights.replace('q', '');
-      if (move.from === 'h8') this.castlingRights = this.castlingRights.replace('k', '');
+      if (move.from === 'a1') this.removeCastlingRight('Q');
+      if (move.from === 'h1') this.removeCastlingRight('K');
+      if (move.from === 'a8') this.removeCastlingRight('q');
+      if (move.from === 'h8') this.removeCastlingRight('k');
     }
 
-    if (this.castlingRights === '') this.castlingRights = '-';
+    if (capturedPiece) {
+      if (capturedSquare === 'a1') this.removeCastlingRight('Q');
+      if (capturedSquare === 'h1') this.removeCastlingRight('K');
+      if (capturedSquare === 'a8') this.removeCastlingRight('q');
+      if (capturedSquare === 'h8') this.removeCastlingRight('k');
+    }
 
-    if (captured || pieceType === 'p') {
+    if (this.castlingRights === '') {
+      this.castlingRights = '-';
+    }
+
+    if (capturedPiece || pieceType === 'p') {
       this.halfMoveClock = 0;
     } else {
       this.halfMoveClock++;
@@ -507,29 +734,29 @@ export class ChessEngine {
     }
 
     this.turn = this.turn === 'white' ? 'black' : 'white';
-
     return true;
   }
 
   public isCheckmate(): boolean {
-    if (!this.isCheck()) return false;
-    return this.getAllLegalMoves().length === 0;
+    return this.isCheck() && this.getAllLegalMoves().length === 0;
   }
 
   public isStalemate(): boolean {
-    if (this.isCheck()) return false;
-    return this.getAllLegalMoves().length === 0;
+    return !this.isCheck() && this.getAllLegalMoves().length === 0;
   }
 
   public isDraw(): boolean {
-    return this.isStalemate() || this.halfMoveClock >= 100 || this.isInsufficientMaterial();
+    return (
+      this.isStalemate() ||
+      this.halfMoveClock >= 100 ||
+      this.isInsufficientMaterial()
+    );
   }
 
   private isInsufficientMaterial(): boolean {
-    const pieces: Piece[] = [];
-    for (let row = 0; row < 8; row++) {
-      for (let col = 0; col < 8; col++) {
-        const piece = this.board[row][col];
+    const pieces: Exclude<Piece, null>[] = [];
+    for (const row of this.board) {
+      for (const piece of row) {
         if (piece && piece.toLowerCase() !== 'k') {
           pieces.push(piece);
         }
@@ -537,13 +764,10 @@ export class ChessEngine {
     }
 
     if (pieces.length === 0) return true;
-    if (pieces.length === 1 && pieces[0]) {
-      const piece = pieces[0].toLowerCase();
-      if (piece === 'n' || piece === 'b') {
-        return true;
-      }
+    if (pieces.length === 1) {
+      const single = pieces[0].toLowerCase();
+      return single === 'n' || single === 'b';
     }
-
     return false;
   }
 
@@ -551,13 +775,12 @@ export class ChessEngine {
     const moves: Move[] = [];
     for (let row = 0; row < 8; row++) {
       for (let col = 0; col < 8; col++) {
-        const piece = this.board[row][col];
-        if (piece && this.isOwnPiece(piece, this.turn)) {
-          const from = this.coordsToSquare(row, col);
-          const validMoves = this.getValidMoves(from);
-          for (const to of validMoves) {
-            moves.push({ from, to, piece });
-          }
+        const square = this.coordsToSquare(row, col);
+        const piece = this.getPieceAt(square);
+        if (!piece || !this.isOwnPiece(piece, this.turn)) continue;
+        const validMoves = this.getValidMoves(square);
+        for (const to of validMoves) {
+          moves.push({ from: square, to, piece });
         }
       }
     }
@@ -567,8 +790,6 @@ export class ChessEngine {
   public getAIMove(elo: number | string = 1200): Move | null {
     const value = typeof elo === 'string' ? parseInt(elo, 10) : elo;
     const clamped = Math.max(600, Math.min(2100, Number.isFinite(value) ? value : 1200));
-
-    // Map Elo to search depth (higher Elo => deeper search)
     const depth = clamped < 1000 ? 1 : clamped < 1400 ? 2 : clamped < 1800 ? 3 : 4;
     return this.getBestMove(depth);
   }
@@ -581,28 +802,24 @@ export class ChessEngine {
     let bestScore = -Infinity;
 
     for (const move of moves) {
-      const savedState = this.exportFEN();
+      const state = this.saveState();
       this.makeMove(move);
       const score = -this.minimax(depth - 1, -Infinity, Infinity, false);
-      const newFEN = savedState;
-      const parsedPosition = this.parseFEN(newFEN);
-      this.board = this.fenToBoard(parsedPosition.fen);
-      this.turn = parsedPosition.turn;
-      this.castlingRights = parsedPosition.castling;
-      this.enPassantSquare = parsedPosition.enPassant;
-      this.halfMoveClock = parsedPosition.halfmove;
-      this.fullMoveNumber = parsedPosition.fullmove;
-
+      this.restoreState(state);
       if (score > bestScore) {
         bestScore = score;
         bestMove = move;
       }
     }
-
     return bestMove;
   }
 
-  private minimax(depth: number, alpha: number, beta: number, isMaximizing: boolean): number {
+  private minimax(
+    depth: number,
+    alpha: number,
+    beta: number,
+    isMaximizing: boolean
+  ): number {
     if (depth === 0) return this.evaluatePosition();
 
     const moves = this.getAllLegalMoves();
@@ -614,60 +831,53 @@ export class ChessEngine {
     if (isMaximizing) {
       let maxScore = -Infinity;
       for (const move of moves) {
-        const savedState = this.exportFEN();
+        const state = this.saveState();
         this.makeMove(move);
         const score = this.minimax(depth - 1, alpha, beta, false);
-        const newFEN = savedState;
-        const parsedPosition = this.parseFEN(newFEN);
-        this.board = this.fenToBoard(parsedPosition.fen);
-        this.turn = parsedPosition.turn;
-        this.castlingRights = parsedPosition.castling;
-        this.enPassantSquare = parsedPosition.enPassant;
-        this.halfMoveClock = parsedPosition.halfmove;
-        this.fullMoveNumber = parsedPosition.fullmove;
-
+        this.restoreState(state);
         maxScore = Math.max(maxScore, score);
         alpha = Math.max(alpha, score);
         if (beta <= alpha) break;
       }
       return maxScore;
-    } else {
-      let minScore = Infinity;
-      for (const move of moves) {
-        const savedState = this.exportFEN();
-        this.makeMove(move);
-        const score = this.minimax(depth - 1, alpha, beta, true);
-        const newFEN = savedState;
-        const parsedPosition = this.parseFEN(newFEN);
-        this.board = this.fenToBoard(parsedPosition.fen);
-        this.turn = parsedPosition.turn;
-        this.castlingRights = parsedPosition.castling;
-        this.enPassantSquare = parsedPosition.enPassant;
-        this.halfMoveClock = parsedPosition.halfmove;
-        this.fullMoveNumber = parsedPosition.fullmove;
-
-        minScore = Math.min(minScore, score);
-        beta = Math.min(beta, score);
-        if (beta <= alpha) break;
-      }
-      return minScore;
     }
+
+    let minScore = Infinity;
+    for (const move of moves) {
+      const state = this.saveState();
+      this.makeMove(move);
+      const score = this.minimax(depth - 1, alpha, beta, true);
+      this.restoreState(state);
+      minScore = Math.min(minScore, score);
+      beta = Math.min(beta, score);
+      if (beta <= alpha) break;
+    }
+    return minScore;
   }
 
   private evaluatePosition(): number {
     const pieceValues: Record<string, number> = {
-      p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000,
-      P: 100, N: 320, B: 330, R: 500, Q: 900, K: 20000
+      p: 100,
+      n: 320,
+      b: 330,
+      r: 500,
+      q: 900,
+      k: 20000,
+      P: 100,
+      N: 320,
+      B: 330,
+      R: 500,
+      Q: 900,
+      K: 20000,
     };
 
     let score = 0;
     for (let row = 0; row < 8; row++) {
       for (let col = 0; col < 8; col++) {
         const piece = this.board[row][col];
-        if (piece) {
-          const value = pieceValues[piece.toLowerCase()];
-          score += this.isWhitePiece(piece) ? value : -value;
-        }
+        if (!piece) continue;
+        const value = pieceValues[piece] || 0;
+        score += this.isWhitePiece(piece) ? value : -value;
       }
     }
 
@@ -683,5 +893,39 @@ export class ChessEngine {
     if (this.isStalemate()) return 'stalemate';
     if (this.isDraw()) return 'draw';
     return 'active';
+  }
+
+  private saveState(): {
+    board: Board;
+    turn: 'white' | 'black';
+    castlingRights: string;
+    enPassantSquare: string;
+    halfMoveClock: number;
+    fullMoveNumber: number;
+  } {
+    return {
+      board: this.board.map((row) => [...row]),
+      turn: this.turn,
+      castlingRights: this.castlingRights,
+      enPassantSquare: this.enPassantSquare,
+      halfMoveClock: this.halfMoveClock,
+      fullMoveNumber: this.fullMoveNumber,
+    };
+  }
+
+  private restoreState(state: {
+    board: Board;
+    turn: 'white' | 'black';
+    castlingRights: string;
+    enPassantSquare: string;
+    halfMoveClock: number;
+    fullMoveNumber: number;
+  }): void {
+    this.board = state.board.map((row) => [...row]);
+    this.turn = state.turn;
+    this.castlingRights = state.castlingRights;
+    this.enPassantSquare = state.enPassantSquare;
+    this.halfMoveClock = state.halfMoveClock;
+    this.fullMoveNumber = state.fullMoveNumber;
   }
 }

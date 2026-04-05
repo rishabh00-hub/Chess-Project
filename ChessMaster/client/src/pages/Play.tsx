@@ -21,6 +21,9 @@ export default function Play() {
               const [isMatchmaking, setIsMatchmaking] = useState(false);
                 const [showAiDifficulty, setShowAiDifficulty] = useState(false);
                   const [aiElo, setAiElo] = useState<number>(1200);
+                    const [friendRoomCode, setFriendRoomCode] = useState<string>('');
+                      const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+                        const [showFriendRoom, setShowFriendRoom] = useState(false);
 
                     useEffect(() => {
                             if (!isLoading && !user) {
@@ -28,6 +31,33 @@ export default function Play() {
                                             setTimeout(() => window.location.href = "/", 500);
                             }
                     }, [user, isLoading, toast]);
+
+                      // Polling for matchmaking
+                        useEffect(() => {
+                                if (!isMatchmaking) return;
+
+                                  const interval = setInterval(async () => {
+                                            try {
+                                                      const response = await apiRequest('GET', '/api/matchmaking/status', {});
+                                                            const data = await response.json();
+                                                                  if (!data.inQueue) {
+                                                                              // Check if we have a game now
+                                                                                        const gameResponse = await apiRequest('GET', '/api/games/user/recent', {});
+                                                                                              const games = await gameResponse.json();
+                                                                                                    const latestGame = games.find((g: any) => g.gameMode === 'online' && g.status === 'active');
+                                                                                                          if (latestGame) {
+                                                                                                                            setIsMatchmaking(false);
+                                                                                                                                          toast({ title: "Match Found!", description: "Starting your match..." });
+                                                                                                                                                        setLocation(`/game/${latestGame.id}`);
+                                                                                                                                                              }
+                                                                                        }
+                                                                          } catch (error) {
+                                                                                    console.error('Matchmaking poll error:', error);
+                                                                          }
+                                        }, 2000);
+
+                                  return () => clearInterval(interval);
+                        }, [isMatchmaking, toast, setLocation]);
 
                       const getEloTitle = (elo: number) => {
                             if (elo < 1000) return "Beginner";
@@ -59,18 +89,70 @@ export default function Play() {
                                         },
                         });
 
+                          const createRoomMutation = useMutation({
+                                mutationFn: async () => {
+                                          const response = await apiRequest('POST', '/api/rooms', {});
+                                          return await response.json();
+                                },
+                                    onSuccess: (data: any) => {
+                                              setFriendRoomCode(data.roomCode);
+                                                    setShowFriendRoom(true);
+                                    },
+                                        onError: () => {
+                                                  toast({ title: "Error", description: "Failed to create room.", variant: "destructive" });
+                                        },
+                        });
+
+                          const joinRoomMutation = useMutation({
+                                mutationFn: async (roomCode: string) => {
+                                          const response = await apiRequest('POST', `/api/rooms/${roomCode}/join`, {});
+                                          return await response.json();
+                                },
+                                    onSuccess: (data: any) => {
+                                              toast({ title: "Joined Room!", description: "Starting your match..." });
+                                                    setLocation(`/game/${data.gameId}`);
+                                    },
+                                        onError: (error: any) => {
+                                                  toast({ title: "Error", description: error?.message || "Failed to join room.", variant: "destructive" });
+                                        },
+                        });
+
+                          const enterMatchmakingMutation = useMutation({
+                                mutationFn: async () => {
+                                          const response = await apiRequest('POST', '/api/matchmaking/enter', {});
+                                          return await response.json();
+                                },
+                                    onSuccess: (data: any) => {
+                                              if (data.gameId) {
+                                                        toast({ title: "Match Found!", description: "Starting your match..." });
+                                                              setLocation(`/game/${data.gameId}`);
+                                                    } else {
+                                                              setIsMatchmaking(true);
+                                                                    }
+                                    },
+                                        onError: () => {
+                                                  toast({ title: "Error", description: "Failed to enter matchmaking.", variant: "destructive" });
+                                        },
+                        });
+
+                          const leaveMatchmakingMutation = useMutation({
+                                mutationFn: async () => {
+                                          await apiRequest('DELETE', '/api/matchmaking/leave', {});
+                                },
+                        });
+
                           const handleGameModeSelect = (mode: GameMode) => {
                                 if (mode === 'ai') {
                                           setShowAiDifficulty(true);
                                                 return;
                                 }
                                     if (mode === 'friend') {
-                                              createGameMutation.mutate({ mode }); // FIXED: Instant creation, no fake loader
+                                              setIsCreatingRoom(true);
+                                                    createRoomMutation.mutate();
                                                     return;
                                     }
                                         if (mode === 'online') {
-                                                  setIsMatchmaking(true);
-                                                        setTimeout(() => createGameMutation.mutate({ mode }), 2000); // Online still has matchmaking loader
+                                                  enterMatchmakingMutation.mutate();
                                         }
                           };
 
@@ -119,6 +201,36 @@ export default function Play() {
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           </CardContent>
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     </Card>
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             </div>
+                                                                                        ) : showFriendRoom ? (
+                                                                                                    <div className="px-4 mb-8">
+                                                                                                              <Button variant="ghost" className="mb-4 text-slate-400 pl-0" onClick={() => { setShowFriendRoom(false); setFriendRoomCode(''); }}>
+                                                                                                                          <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                                                                                                                                    </Button>
+                                                                                                                                              
+                                                                                                                                                        <Card className="bg-slate-800 border-slate-600 mb-6">
+                                                                                                                                                                    <CardContent className="p-6 text-center">
+                                                                                                                                                                                  <Users className="mx-auto mb-4 h-12 w-12 text-blue-400" />
+                                                                                                                                                                                                <h2 className="text-xl font-bold mb-1">Friend Room Created</h2>
+                                                                                                                                                                                                              
+                                                                                                                                                                                                                            <div className="mb-6 mt-4">
+                                                                                                                                                                                                                                            <p className="text-slate-400 mb-2">Share this code with your friend:</p>
+                                                                                                                                                                                                                                                              <div className="bg-slate-700 rounded-lg p-4 font-mono text-2xl font-bold text-white">
+                                                                                                                                                                                                                                                                                {friendRoomCode}
+                                                                                                                                                                                                                                                                                                </div>
+                                                                                                                                                                                                                                                                                                                </div>
+
+                                                                                                                                                                                                                                                                                                                                <p className="text-sm text-slate-400 mb-6">Waiting for a friend to join...</p>
+                                                                                                                                                                                                                                                                                                                                                
+                                                                                                                                                                                                                                                                                                                                                <Button 
+                                                                                                                                                                                                                                                                                                                                                                  variant="outline" 
+                                                                                                                                                                                                                                                                                                                                                                            onClick={() => { setShowFriendRoom(false); setFriendRoomCode(''); }}
+                                                                                                                                                                                                                                                                                                                                                                                      className="w-full"
+                                                                                                                                                                                                                                                                                                                                                                                                >
+                                                                                                                                                                                                                                                                                                                                                                                                          Cancel Room
+                                                                                                                                                                                                                                                                                                                                                                                                                    </Button>
+                                                                                                                                                                                                                                                                                                                                                                                                                            </CardContent>
+                                                                                                                                                                                                                                                                                                                                                                                                                                    </Card>
+                                                                                                                                                                                                                                                                                                                                                                                                                                            </div>
                                                                                         ) : !isMatchmaking ? (
                                                                                                     <div className="px-4 mb-8">
                                                                                                               <div className="space-y-3">
@@ -140,16 +252,43 @@ export default function Play() {
                                                                                                                                                                                                                                                                                                                             </Card>
                                                                                                                           ))}
                                                                                                                                     </div>
+
+                                                                                                                                            <div className="mt-6 pt-6 border-t border-slate-700">
+                                                                                                                                                      <h3 className="text-sm font-medium text-slate-400 mb-3">Have a room code?</h3>
+                                                                                                                                                                <div className="flex space-x-2">
+                                                                                                                                                                          <input
+                                                                                                                                                                                    type="text"
+                                                                                                                                                                                              placeholder="Enter room code"
+                                                                                                                                                                                                        value={friendRoomCode}
+                                                                                                                                                                                                                  onChange={(e) => setFriendRoomCode(e.target.value.toUpperCase())}
+                                                                                                                                                                                                                            className="flex-1 bg-slate-700 border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                                                                                                                                                                                      />
+                                                                                                                                                                                                                                                <Button 
+                                                                                                                                                                                                                                                          onClick={() => joinRoomMutation.mutate(friendRoomCode)}
+                                                                                                                                                                                                                                                                    disabled={joinRoomMutation.isPending || !friendRoomCode}
+                                                                                                                                                                                                                                                                              className="bg-blue-600 hover:bg-blue-700"
+                                                                                                                                                                                                                                                                                        >
+                                                                                                                                                                                                                                                                                                  {joinRoomMutation.isPending ? "Joining..." : "Join"}
+                                                                                                                                                                                                                                                                                                            </Button>
+                                                                                                                                                                                                                                                                                                                    </div>
+                                                                                                                                                                                                                                                            </div>
                                                                                                                                             </div>
                                                                                         ) : (
                                                                                                     <div className="px-4">
                                                                                                               <Card className="bg-slate-800 border-slate-700">
                                                                                                                           <CardContent className="p-8 text-center">
                                                                                                                                         <Loader2 className="text-emerald-400 animate-spin mx-auto mb-4" size={40} />
-                                                                                                                                                      <h3 className="text-lg font-semibold">Finding Opponent...</h3>
-                                                                                                                                                                  </CardContent>
-                                                                                                                                                                            </Card>
-                                                                                                                                                                                    </div>
+                                                                                                                                                      <h3 className="text-lg font-semibold mb-4">Finding Opponent...</h3>
+                                                                                                                                                                  <Button 
+                                                                                                                                                                            variant="outline" 
+                                                                                                                                                                                      onClick={() => { setIsMatchmaking(false); leaveMatchmakingMutation.mutate(); }}
+                                                                                                                                                                                                className="w-full"
+                                                                                                                                                                                                          >
+                                                                                                                                                                                                                    Cancel Search
+                                                                                                                                                                                                                              </Button>
+                                                                                                                                                                                                                                        </CardContent>
+                                                                                                                                                                                                                                                  </Card>
+                                                                                                                                                                                                                                                            </div>
                                                                                         )}
                                                                                             </div>
                               );

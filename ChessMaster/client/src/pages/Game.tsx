@@ -5,11 +5,13 @@ import ChessBoard from "@/components/ChessBoard";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft, Flag, Users, Trophy } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 import type { Game as GameType } from "@shared/schema";
 
 export default function Game() {
   const [, params] = useRoute("/game/:id");
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
   const gameId = params?.id ? parseInt(params.id) : null;
 
   const { data: game, isLoading, error } = useQuery<GameType>({
@@ -96,7 +98,8 @@ export default function Game() {
     );
   }
 
-  const isPlayerTurn = game.currentTurn === 'white';
+  const isPlayerTurn = user && ((game.whitePlayerId === user.id && game.currentTurn === 'white') || (game.blackPlayerId === user.id && game.currentTurn === 'black'));
+  const playerColor = user && game.whitePlayerId === user.id ? 'white' : user && game.blackPlayerId === user.id ? 'black' : null;
   const isGameOver = game.status === 'completed';
   const getResultMessage = () => {
     if (!isGameOver) return null;
@@ -174,6 +177,7 @@ export default function Game() {
             interactive={!isGameOver}
             position={game.currentPosition || undefined}
             currentTurn={game.currentTurn as 'white' | 'black'}
+            playerColor={playerColor || 'white'}
             onMove={handleMove}
             disabled={!isPlayerTurn || moveMutation.isPending || isGameOver}
             showStatus={true}
@@ -185,13 +189,37 @@ export default function Game() {
                 ⚪
               </div>
               <div>
-                <div className="font-medium">You (White)</div>
+                <div className="font-medium">
+                  {playerColor === 'white' ? 'You' : game.whitePlayerId === 'ai' ? 'AI' : 'Opponent'} (White)
+                </div>
                 <div className="text-xs text-slate-400">
-                  {isPlayerTurn && !isGameOver ? 'Your turn' : ''}
+                  {playerColor === 'white' && isPlayerTurn && !isGameOver ? 'Your turn' : ''}
                 </div>
               </div>
             </div>
-            {moveMutation.isPending && game.currentTurn === 'white' && (
+            {moveMutation.isPending && game.currentTurn === 'white' && playerColor === 'white' && (
+              <div className="text-sm text-amber-400 animate-pulse">
+                Making move...
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-between items-center mt-4">
+            <div className="flex items-center gap-3" data-testid="player-info-black">
+              <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-xl">
+                ⚫
+              </div>
+              <div>
+                <div className="font-medium">
+                  {playerColor === 'black' ? 'You' : game.blackPlayerId === 'ai' ? 'AI' : 'Opponent'} (Black)
+                </div>
+                <div className="text-xs text-slate-400">
+                  {playerColor === 'black' && isPlayerTurn && !isGameOver ? 'Your turn' : ''}
+                  {game.status === 'ai_thinking' && game.currentTurn === 'black' ? 'AI is thinking...' : ''}
+                </div>
+              </div>
+            </div>
+            {moveMutation.isPending && game.currentTurn === 'black' && playerColor === 'black' && (
               <div className="text-sm text-amber-400 animate-pulse">
                 Making move...
               </div>

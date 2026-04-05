@@ -287,7 +287,7 @@ const exported = {
         result = await makeZohoApiRequest(path, 'GET');
       } catch (err) {
         if (err.message && (err.message.includes('No Data') || err.message.includes('3000'))) {
-          console.log("Confirmed: No user found with this email. Proceeding to create...");
+          console.log("Confirmed: No user found with this email.");
         } else {
           console.error("Critical API Error during user search:", err.message);
           throw new Error("System configuration or API error. Login halted.");
@@ -296,34 +296,19 @@ const exported = {
 
       // 2. Return existing user ID if found
       if (result && result.data && result.data.length > 0) {
-        return { success: true, userId: result.data[0].ID }; 
+        return { success: true, userId: result.data[0].ID };
       }
 
-      // 3. Create new user with Zoho Creator form
-      const createPath = buildFormURL(process.env.ZOHO_USER_FORM_NAME);
-      const newUserData = {
-        data: {
-          username: `${firstName}_${Math.floor(Math.random() * 1000)}`,
-          email: email,
-          full_name: { first_name: firstName, last_name: lastName },
-          country1: 'Unknown',
-          chess_rating: 1200,
-          total_games_played: 0,
-          total_wins: 0,
-          total_losses: 0,
-          total_draws: 0
+      // 3. No existing user found: return pending onboarding profile data
+      return {
+        success: true,
+        isNew: true,
+        userInfo: {
+          email,
+          firstName,
+          lastName,
         }
       };
-
-      const createResult = await makeZohoApiRequest(createPath, 'POST', newUserData);
-      const newId = createResult?.data?.[0]?.ID;
-      
-      if (!newId) {
-        console.error('ERROR: Zoho did not return ID on user creation', createResult);
-        throw new Error('Failed to get user ID from Zoho');
-      }
-      
-      return { success: true, userId: newId };
     } catch (error) {
       console.error('Login Error:', error);
       return { success: false, userId: null };
@@ -430,7 +415,8 @@ const exported = {
         rating_change_black_player: String(gameData.ratingChangeBlack || '0'),
         winner1: String(gameData.winnerId || ''),
         game_status1: statusMap[gameData.status] || 'Active',
-        current_fen1: String(gameData.currentPosition || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+        current_fen1: String(gameData.currentPosition || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'),
+        ai_thinking: gameData.status === 'ai_thinking' ? true : false
       };
       
       return await makeZohoApiRequest(path, 'POST', { data: mappedGameData });

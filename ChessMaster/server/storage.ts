@@ -18,7 +18,8 @@ class Storage implements IStorage {
       'draw': 'Draw',
       'abandoned': 'Completed',
       'resigned': 'Completed',
-      'timeout': 'Completed'
+      'timeout': 'Completed',
+      'ai_thinking': 'Active'
     };
     return map[status] || 'Active';
   }
@@ -67,8 +68,8 @@ class Storage implements IStorage {
     const currentTurn: 'white' | 'black' = fenParts[1] === 'w' ? 'white' : 'black';
 
     // 5. Map status from Zoho dropdown
-    const statusMap: { [key: string]: 'active' | 'completed' | 'draw' | 'abandoned' | 'resigned' | 'timeout' } = {
-      'Active': 'active',
+    const statusMap: { [key: string]: 'active' | 'completed' | 'draw' | 'abandoned' | 'resigned' | 'timeout' | 'ai_thinking' } = {
+      'Active': record.ai_thinking ? 'ai_thinking' : 'active',
       'Completed': 'completed',
       'Draw': 'draw'
     };
@@ -206,6 +207,7 @@ class Storage implements IStorage {
     if (updates.currentPosition) zohoUpdates.current_fen1 = updates.currentPosition;
     if (updates.status) {
       zohoUpdates.game_status1 = this.mapAppStatusToZoho(updates.status);
+      zohoUpdates.ai_thinking = updates.status === 'ai_thinking';
       if (updates.status === 'draw') {
         zohoUpdates.match_result = 'Draw';
       } else if (updates.winnerId) {
