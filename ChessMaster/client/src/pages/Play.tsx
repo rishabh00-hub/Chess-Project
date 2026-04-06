@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -143,7 +143,7 @@ export default function Play() {
                         });
 
                           // Query for matchmaking status
-                          const { data: matchmakingStatus } = useQuery({
+                          const { data: matchmakingStatus } = useQuery<{ queueSize?: number }>({
                                 queryKey: ['matchmaking-status'],
                                     enabled: isMatchmaking,
                                         refetchInterval: 3000,
