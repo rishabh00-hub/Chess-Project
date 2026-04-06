@@ -128,7 +128,8 @@ export default function Play() {
                                                               setLocation(`/game/${data.gameId}`);
                                                     } else {
                                                               setIsMatchmaking(true);
-                                                                    }
+                                                                    toast({ title: "Entered Matchmaking", description: "Looking for an opponent..." });
+                                                                          }
                                     },
                                         onError: () => {
                                                   toast({ title: "Error", description: "Failed to enter matchmaking.", variant: "destructive" });
@@ -140,6 +141,13 @@ export default function Play() {
                                           await apiRequest('DELETE', '/api/matchmaking/leave', {});
                                 },
                         });
+
+                          // Query for matchmaking status
+                          const { data: matchmakingStatus } = useQuery({
+                                queryKey: ['matchmaking-status'],
+                                    enabled: isMatchmaking,
+                                        refetchInterval: 3000,
+                          });
 
                           const handleGameModeSelect = (mode: GameMode) => {
                                 if (mode === 'ai') {
@@ -278,7 +286,12 @@ export default function Play() {
                                                                                                               <Card className="bg-slate-800 border-slate-700">
                                                                                                                           <CardContent className="p-8 text-center">
                                                                                                                                         <Loader2 className="text-emerald-400 animate-spin mx-auto mb-4" size={40} />
-                                                                                                                                                      <h3 className="text-lg font-semibold mb-4">Finding Opponent...</h3>
+                                                                                                                                                      <h3 className="text-lg font-semibold mb-2">Finding Opponent...</h3>
+                                                                                                                                                                  {matchmakingStatus?.queueSize && (
+                                                                                                                                                                            <p className="text-sm text-slate-400 mb-4">
+                                                                                                                                                                                      {matchmakingStatus.queueSize - 1} other player{matchmakingStatus.queueSize - 1 !== 1 ? 's' : ''} waiting
+                                                                                                                                                                                                </p>
+                                                                                                                                                                                                          )}
                                                                                                                                                                   <Button 
                                                                                                                                                                             variant="outline" 
                                                                                                                                                                                       onClick={() => { setIsMatchmaking(false); leaveMatchmakingMutation.mutate(); }}

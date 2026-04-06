@@ -11,18 +11,39 @@ const aiThinkingGames = new Set<number>();
 const friendRooms = new Map<string, { hostId: string; gameId?: number; guestId?: string; createdAt: number }>();
 const matchmakingQueue: Array<{ userId: string; elo: number; timestamp: number }> = [];
 
+// Cleanup intervals
+setInterval(() => {
+  const now = Date.now();
+  // Remove friend rooms older than 1 hour
+  for (const [code, room] of friendRooms.entries()) {
+    if (now - room.createdAt > 60 * 60 * 1000) { // 1 hour
+      friendRooms.delete(code);
+    }
+  }
+  // Remove matchmaking entries older than 5 minutes
+  matchmakingQueue.splice(0, matchmakingQueue.length, 
+    ...matchmakingQueue.filter(entry => now - entry.timestamp < 5 * 60 * 1000)
+  );
+}, 60 * 1000); // Run cleanup every minute
+
 // Helper function to find a match in the queue
 function findMatch(userId: string, userElo: number): { opponentId: string } | null {
   const candidates = matchmakingQueue.filter(entry => 
     entry.userId !== userId && 
-    Math.abs(entry.elo - userElo) <= 200 // Within 200 Elo points
+    Math.abs(entry.elo - userElo) <= 300 // Within 300 Elo points for better matching
   );
 
   if (candidates.length === 0) return null;
 
-  // Find the closest Elo match
+  // Find the closest Elo match, but add some randomization for fairness
   candidates.sort((a, b) => Math.abs(a.elo - userElo) - Math.abs(b.elo - userElo));
-  return { opponentId: candidates[0].userId };
+  
+  // If there are multiple candidates within 50 Elo points, randomize
+  const bestEloDiff = Math.abs(candidates[0].elo - userElo);
+  const closeCandidates = candidates.filter(c => Math.abs(c.elo - userElo) <= bestEloDiff + 50);
+  
+  const selected = closeCandidates[Math.floor(Math.random() * closeCandidates.length)];
+  return { opponentId: selected.userId };
 }
 
 // Initialize aiThinkingGames from persisted games on startup
@@ -286,6 +307,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdAt: Date.now()
       });
 
+      console.log(`Created friend room ${roomCode} for user ${userId}`);
       res.json({ roomCode });
     } catch (error: any) {
       console.error('Error creating friend room:', error);
@@ -337,6 +359,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       room.guestId = userId;
       room.gameId = game.id;
 
+      console.log(`User ${userId} joined room ${roomCode}, game ${game.id} created`);
       res.json({ gameId: game.id });
     } catch (error: any) {
       console.error('Error joining friend room:', error);
@@ -368,6 +391,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timestamp: Date.now()
       });
 
+      console.log(`User ${userId} (Elo: ${elo}) entered matchmaking queue. Queue size: ${matchmakingQueue.length}`);
+
       // Try to find a match
       const match = findMatch(userId, elo);
       if (match) {
@@ -386,6 +411,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const game = await storage.createGame(gameData);
         if (game) {
+          console.log(`Match found: ${userId} vs ${match.opponentId}, game ${game.id} created`);
           return res.json({ gameId: game.id, opponentId: match.opponentId });
         }
       }
@@ -406,7 +432,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const inQueue = matchmakingQueue.some(entry => entry.userId === userId);
-      res.json({ inQueue });
+      res.json({ inQueue, queueSize: matchmakingQueue.length });
     } catch (error: any) {
       console.error('Error checking matchmaking status:', error);
       res.status(500).json({ message: 'Failed to check status' });
