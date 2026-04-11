@@ -12,7 +12,7 @@ export default function Landing() {
       console.error("🚨 CRITICAL: VITE_ZOHO_CLIENT_ID is missing in .env file!");
     }
 
-    const redirectUri = encodeURIComponent(window.location.origin + "/api/callback");
+    const redirectUri = encodeURIComponent(import.meta.env.VITE_ZOHO_REDIRECT_URI);
     const scope = encodeURIComponent("AaaServer.profile.READ,ZohoCreator.data.CREATE,ZohoCreator.data.READ,ZohoCreator.data.UPDATE");
     const responseType = "code";
     const authUrl = `https://accounts.zoho.in/oauth/v2/auth?scope=${scope}&client_id=${clientId}&response_type=${responseType}&access_type=offline&redirect_uri=${redirectUri}`;

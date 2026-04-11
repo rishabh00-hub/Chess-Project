@@ -3,7 +3,13 @@ import type { Express } from 'express';
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { storage } from './storage.js';
-import zohoApi from './zoho-api-service.js';
+import zohoApi, { makeZohoApiRequest, buildReportURL } from './zoho-api-service.js';
+
+// Type for Zoho API responses
+interface ZohoApiResponse {
+  data?: any[];
+  [key: string]: any;
+}
 
 const aiThinkingGames = new Set<number>();
 
@@ -184,10 +190,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (sanitizedUsername.length < 3) {
         return res.status(400).json({ message: 'Username must be at least 3 characters' });
       }
-      const existingUser = await zohoApi.getUserByUsername(sanitizedUsername);
-      if (existingUser) {
-        return res.status(409).json({ message: 'Username already taken' });
+
+      // STRICT UNIQUE USERNAME CHECK: Multiple verification layers
+      console.log(`🔍 Checking username uniqueness: "${sanitizedUsername}"`);
+
+      // 1. Check against Zoho database by username field
+      const existingUserByUsername = await zohoApi.getUserByUsername(sanitizedUsername);
+      if (existingUserByUsername) {
+        console.warn(`❌ Username "${sanitizedUsername}" already exists in Zoho`);
+        return res.status(409).json({ message: 'Username already taken. Please choose a different username.' });
       }
+
+      // 2. Additional check: Search by username criteria to catch any edge cases
+      const usernameCriteria = `(username=="${sanitizedUsername}")`;
+      const usernamePath = buildReportURL(process.env.ZOHO_USER_REPORT_NAME, usernameCriteria as any);
+      try {
+        const usernameSearchResult = await makeZohoApiRequest(usernamePath, 'GET') as ZohoApiResponse;
+        if (usernameSearchResult?.data && usernameSearchResult.data.length > 0) {
+          console.warn(`❌ Username "${sanitizedUsername}" found via criteria search`);
+          return res.status(409).json({ message: 'Username already taken. Please choose a different username.' });
+        }
+      } catch (searchError: any) {
+        // If search fails with "No Data", that's good (username is available)
+        if (!searchError.message?.includes('No Data') && !searchError.message?.includes('3000')) {
+          console.error('Error during username criteria search:', searchError);
+          return res.status(500).json({ message: 'Unable to verify username availability' });
+        }
+      }
+
+      console.log(`✅ Username "${sanitizedUsername}" is available`);
 
       const result = await zohoApi.createUserProfile({
         username: sanitizedUsername,
@@ -199,7 +230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         wins: 0,
         losses: 0,
         draws: 0
-      });
+      }) as ZohoApiResponse;
 
       const userId = result?.data?.[0]?.ID || result?.data?.[0]?.id;
       if (!userId) {
@@ -215,7 +246,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       req.session.userId = userId;
       delete req.session.pendingZohoProfile;
-      req.session.save((err) => {
+      req.session.save((err: any) => {
         if (err) {
           console.error('Session save failed after onboarding:', err);
           return res.status(500).json({ message: 'Failed to save session' });
@@ -259,10 +290,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const gameData = {
         whitePlayerId,
-        blackPlayerId: blackPlayerId || null,
+        blackPlayerId: blackPlayerId || '',
         gameMode,
-        status: 'active',
-        aiDifficulty: safeElo
+        status: 'active' as const,
+        currentTurn: 'white' as const,
+        currentPosition: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        moves: [],
+        moveHistory: '',
+        halfMoveClock: 0,
+        fullMoveNumber: 1,
+        aiDifficulty: safeElo || undefined,
+        pointsAwarded: 0
       };
       
       const game = await storage.createGame(gameData);
@@ -346,8 +384,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const gameData = {
         whitePlayerId: room.hostId,
         blackPlayerId: userId,
-        gameMode: 'friend',
-        status: 'active'
+        gameMode: 'friend' as const,
+        status: 'active' as const,
+        currentTurn: 'white' as const,
+        currentPosition: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        moves: [],
+        moveHistory: '',
+        halfMoveClock: 0,
+        fullMoveNumber: 1,
+        pointsAwarded: 0
       };
 
       const game = await storage.createGame(gameData);
@@ -405,8 +450,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const gameData = {
           whitePlayerId: isWhite ? userId : match.opponentId,
           blackPlayerId: isWhite ? match.opponentId : userId,
-          gameMode: 'online',
-          status: 'active'
+          gameMode: 'online' as const,
+          status: 'active' as const,
+          currentTurn: 'white' as const,
+          currentPosition: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+          moves: [],
+          moveHistory: '',
+          halfMoveClock: 0,
+          fullMoveNumber: 1,
+          pointsAwarded: 0
         };
 
         const game = await storage.createGame(gameData);
@@ -674,15 +726,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`✓ Using userId from Zoho auth: ${userId}`);
       } else if (authResult?.success && authResult?.isNew && authResult?.userInfo) {
         const { email, firstName, lastName } = authResult.userInfo;
-        req.session.pendingZohoProfile = { email, firstName, lastName };
-        req.session.save((err) => {
-          if (err) {
-            console.error('❌ Session save error for pending onboarding:', err);
-            return res.redirect('/?error=session_failed');
-          }
-          return res.redirect('/onboarding');
+        (req.session as any).pendingZohoProfile = { email, firstName, lastName };
+        
+        // CRITICAL: Await session save completion before redirecting
+        await new Promise<void>((resolve, reject) => {
+          req.session.save((err) => {
+            if (err) {
+              console.error('❌ Session save error for pending onboarding:', err);
+              reject(err);
+            } else {
+              console.log('✓ Session saved successfully for pending onboarding');
+              resolve();
+            }
+          });
         });
-        return;
+        
+        return res.redirect('/onboarding');
       } else {
         console.error('❌ Zoho auth returned no existing user and no pending user info');
         return res.redirect('/?error=auth_failed');

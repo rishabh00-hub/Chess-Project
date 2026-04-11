@@ -33,15 +33,25 @@ export default function Home() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Handle login=success redirect
+  // Handle auth state changes - invalidate queries when user logs in
+  useEffect(() => {
+    if (user && !isLoading) {
+      // User is now authenticated - invalidate and refetch all queries
+      queryClient.invalidateQueries();
+      toast({
+        title: "Welcome back!",
+        description: "Successfully logged in to ChessFlow.",
+      });
+    }
+  }, [user, isLoading, queryClient, toast]);
+
+  // Handle login=success redirect (legacy support)
   useEffect(() => {
     if (window.location.search.includes('login=success')) {
-      // Invalidate the /api/me query to force a refetch with the new session
-      queryClient.invalidateQueries({ queryKey: ["/api/me"] });
-      // Clear the URL
+      // Clean up URL parameter
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [queryClient]);
+  }, []);
 
   const { data: recentGames = [] } = useQuery({
     queryKey: ["/api/games/user/recent"],

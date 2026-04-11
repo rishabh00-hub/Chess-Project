@@ -12,7 +12,6 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "lib": ["ES2022"],
-    "ignoreDeprecations": "6.0",
     "rootDir": "..",
     "baseUrl": ".",
     "paths": {

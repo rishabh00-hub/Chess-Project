@@ -148,6 +148,7 @@ async function fetchZohoUserInfo() {
   }
 
   const data = await res.json();
+  console.log("ZOHO RAW DATA:", JSON.stringify(data, null, 2));
   return data; // Returns object with first_name, last_name, email, etc.
 }
 
@@ -276,7 +277,13 @@ const exported = {
       const userInfo = await fetchZohoUserInfo();
       const firstName = userInfo.First_Name || userInfo.first_name || 'Player';
       const lastName = userInfo.Last_Name || userInfo.last_name || 'Chess';
-      const email = userInfo.Email || userInfo.email || `player_${Date.now()}@chessmaster.app`;
+      const email = userInfo.Email || userInfo.email;
+
+      // STRICT REQUIREMENT: No fake emails allowed
+      if (!email || typeof email !== 'string' || !email.includes('@')) {
+        console.error('❌ CRITICAL: Zoho OAuth response missing valid email address');
+        throw new Error('Unable to retrieve email from Zoho account. Please ensure your Zoho account has a valid email address configured.');
+      }
 
       // 1. Search for existing user by email
       const criteria = `(email=="${email}")`;
@@ -462,5 +469,8 @@ const exported = {
     return true;
   }
 };
+
+// Export utility functions
+export { makeZohoApiRequest, buildReportURL };
 
 export default exported;

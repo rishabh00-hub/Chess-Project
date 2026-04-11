@@ -9,6 +9,12 @@ import {
   type UserLessonProgress,
 } from "../shared/schema.js";
 
+// Type for Zoho API responses
+interface ZohoApiResponse {
+  data?: any[];
+  [key: string]: any;
+}
+
 class Storage implements IStorage {
   // Helper to map app status to Zoho dropdown
   private mapAppStatusToZoho(status: string): string {
@@ -158,7 +164,7 @@ class Storage implements IStorage {
       return { ...existing, ...user };
     } else {
       // Create a new user in Zoho and validate that the API actually returned an ID.
-      const result = await zohoApi.createUserProfile(user);
+      const result = await zohoApi.createUserProfile(user) as ZohoApiResponse;
       const zohoId = result?.data?.[0]?.ID || result?.data?.[0]?.id;
       if (!zohoId) {
         console.error('ZOHO DB INSERT ERROR (no ID in response):', result);
@@ -176,7 +182,7 @@ class Storage implements IStorage {
 
   // Game operations
   async createGame(game: InsertGame): Promise<Game> {
-    const result = await zohoApi.createGameRecord(game);
+    const result = await zohoApi.createGameRecord(game) as ZohoApiResponse;
     // Handle both direct data and wrapped response
     return this.mapZohoGameToAppGame(result);
   }
@@ -217,9 +223,9 @@ class Storage implements IStorage {
       }
     }
     if (updates.winnerId) zohoUpdates.winner1 = updates.winnerId;
-    const result = await zohoApi.updateGameRecord(id.toString(), zohoUpdates);
+    const result = await zohoApi.updateGameRecord(id.toString(), zohoUpdates) as ZohoApiResponse;
     // Handle both direct data and wrapped response
-    const gameData = result.data?.[0] || result.data || result;
+    const gameData = (result as any).data?.[0] || (result as any).data || result;
     return this.mapZohoGameToAppGame(gameData || game);
   }
 
@@ -260,8 +266,8 @@ class Storage implements IStorage {
       match_result: gameResult === 'draw' ? 'Draw' : gameResult ? 'Win' : 'Ongoing',
       winner1: winnerId
     };
-    const result = await zohoApi.updateGameRecord(gameId.toString(), updateData);
-    const updatedGame = this.mapZohoGameToAppGame(result.data?.[0] || result.data || result) || game;
+    const result = await zohoApi.updateGameRecord(gameId.toString(), updateData) as ZohoApiResponse;
+    const updatedGame = this.mapZohoGameToAppGame((result as any).data?.[0] || (result as any).data || result) || game;
 
     // Update Elo ratings if game has ended
     if (gameResult && game.gameMode !== 'ai') { // Only update for non-AI games
@@ -298,7 +304,15 @@ class Storage implements IStorage {
   }
 
   async completeGame(gameId: number, result: string, winnerId?: string | null): Promise<Game> {
-    return this.updateGame(gameId, { status: result, winnerId: winnerId || undefined });
+    const statusMap: { [key: string]: 'active' | 'completed' | 'abandoned' | 'draw' | 'resigned' | 'timeout' | 'ai_thinking' } = {
+      'completed': 'completed',
+      'abandoned': 'abandoned',
+      'draw': 'draw',
+      'resigned': 'resigned',
+      'timeout': 'timeout'
+    };
+    const status = statusMap[result] || 'completed';
+    return this.updateGame(gameId, { status, winnerId: winnerId || undefined });
   }
 
   // Elo rating system implementation
@@ -382,8 +396,28 @@ class Storage implements IStorage {
 
   // Tutorial operations (hardcoded)
   private tutorialLessons: TutorialLesson[] = [
-    { id: 1, title: 'Basic Moves', description: 'Learn how pieces move', content: 'Pawn moves forward, etc.' },
-    { id: 2, title: 'Check and Checkmate', description: 'Understanding check and checkmate', content: '...' },
+    { 
+      id: 1, 
+      title: 'Basic Moves', 
+      description: 'Learn how pieces move', 
+      category: 'rules' as const,
+      difficulty: 1,
+      content: 'Pawn moves forward, etc.',
+      orderIndex: 1,
+      isActive: true,
+      createdAt: new Date()
+    },
+    { 
+      id: 2, 
+      title: 'Check and Checkmate', 
+      description: 'Understanding check and checkmate', 
+      category: 'rules' as const,
+      difficulty: 1,
+      content: '...',
+      orderIndex: 2,
+      isActive: true,
+      createdAt: new Date()
+    },
   ];
 
   async getTutorialLessons(): Promise<TutorialLesson[]> {
