@@ -74,13 +74,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Zoho initialization route - use this to store your refresh token
   app.post('/api/zoho/init', express.json(), async (req, res) => {
     try {
-      const { authCode } = req.body;
+      const { authCode, redirectUri } = req.body;
       if (!authCode) {
         return res.status(400).json({ error: 'authCode is required in request body' });
       }
       
-      await zohoApi.loginOrRegister(authCode);
-      res.json({ success: true, message: 'Zoho refresh token stored successfully' });
+      await zohoApi.initializeServerToken(authCode, redirectUri);
+      res.json({ success: true, message: 'Zoho refresh token stored and verified successfully' });
     } catch (error: any) {
       console.error('Zoho initialization error:', error);
       res.status(500).json({ 

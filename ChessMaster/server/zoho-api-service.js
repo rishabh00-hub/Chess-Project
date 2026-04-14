@@ -63,7 +63,7 @@ function buildFormUrlEncoded(obj) {
 }
 
 // Exchange authorization code for access + refresh tokens (run once)
-async function initialTokenExchange(authCode, customRedirectUri) {
+async function initialTokenExchange(authCode, customRedirectUri, persistRefreshToken = false) {
   if (!authCode) throw new Error('authCode is required');
 
   const body = buildFormUrlEncoded({
@@ -90,9 +90,19 @@ async function initialTokenExchange(authCode, customRedirectUri) {
   const data = await res.json();
   accessToken = data.access_token;
   const refreshToken = data.refresh_token;
-  if (refreshToken) {
-    // Persist refresh token securely
+  if (persistRefreshToken) {
+    if (!refreshToken) {
+      throw new Error(
+        'Zoho token response did not include refresh_token. Re-authorize with access_type=offline and prompt=consent, then retry /api/zoho/init.'
+      );
+    }
+
+    // Persist refresh token securely and verify read-back immediately.
     secureStorage.save('zoho_refresh_token', refreshToken);
+    const storedToken = secureStorage.load('zoho_refresh_token');
+    if (!storedToken || storedToken !== refreshToken) {
+      throw new Error('Refresh token persistence check failed. Secure storage write/read did not match.');
+    }
   }
 
   return data;
@@ -220,9 +230,29 @@ function buildFormURL(formName, systemRecordId = null) {
 }
 
 // Helper to build report endpoint URLs for GET operations (reading)
-// STRICT FIX: Do not double-encode the criteria string here.
 function buildReportURL(reportName, criteria = null) {
-  return criteria ? `/report/${reportName}?criteria=${criteria}` : `/report/${reportName}`;
+  if (!criteria) {
+    return `/report/${reportName}`;
+  }
+
+  // Zoho expects criteria as a query parameter value, so it must be URL-encoded.
+  return `/report/${reportName}?criteria=${encodeURIComponent(criteria)}`;
+}
+
+function escapeCriteriaValue(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function buildStringEqualsCriteria(fieldName, value) {
+  return `(${fieldName}=="${escapeCriteriaValue(value)}")`;
+}
+
+function buildNumericIdCriteria(idValue) {
+  const numericId = Number(idValue);
+  if (!Number.isFinite(numericId)) {
+    throw new Error(`Invalid numeric ID for Zoho criteria: ${idValue}`);
+  }
+  return `(ID==${numericId})`;
 }
 
 // Try to initialize accessToken on module load using stored refresh token.
@@ -272,7 +302,9 @@ const exported = {
   },
 
   async loginOrRegister(authCode, customRedirectUri) {
-    await initialTokenExchange(authCode, customRedirectUri);
+    // IMPORTANT: Do NOT persist end-user refresh tokens from login flow.
+    // Creator data APIs must run with the server's configured refresh token.
+    await initialTokenExchange(authCode, customRedirectUri, false);
     try {
       const userInfo = await fetchZohoUserInfo();
       const firstName = userInfo.First_Name || userInfo.first_name || 'Player';
@@ -285,8 +317,16 @@ const exported = {
         throw new Error('Unable to retrieve email from Zoho account. Please ensure your Zoho account has a valid email address configured.');
       }
 
+      // Switch back to server-side Creator token before DB/report queries.
+      try {
+        await refreshAccessToken();
+      } catch (tokenError) {
+        console.error('Critical token context error before Creator DB query:', tokenError);
+        throw new Error('Creator service token unavailable. Please initialize server refresh token first.');
+      }
+
       // 1. Search for existing user by email
-      const criteria = `(email=="${email}")`;
+      const criteria = buildStringEqualsCriteria('email', email);
       const path = buildReportURL(process.env.ZOHO_USER_REPORT_NAME, criteria);
       
       let result = null;
@@ -322,6 +362,11 @@ const exported = {
     }
   },
 
+  async initializeServerToken(authCode, customRedirectUri) {
+    // Explicit admin/owner setup path: persist refresh token for Creator data access.
+    return initialTokenExchange(authCode, customRedirectUri, true);
+  },
+
   async createUserProfile(profileData) {
     const path = buildFormURL(process.env.ZOHO_USER_FORM_NAME);
     const mappedData = {
@@ -345,7 +390,7 @@ const exported = {
     if (!userId) return null;
     try {
       // Use Zoho system ID for lookup
-      const criteria = `(ID=="${userId}")`;
+      const criteria = buildNumericIdCriteria(userId);
       const path = buildReportURL(process.env.ZOHO_USER_REPORT_NAME, criteria);
       const result = await makeZohoApiRequest(path, 'GET');
       return result?.data?.[0] || null;
@@ -357,7 +402,7 @@ const exported = {
 
   async getUserByUsername(username) {
     if (!username) return null;
-    const criteria = `(username=="${username}")`;
+    const criteria = buildStringEqualsCriteria('username', username);
     const path = buildReportURL(process.env.ZOHO_USER_REPORT_NAME, criteria);
     try {
       const result = await makeZohoApiRequest(path, 'GET');
@@ -376,7 +421,8 @@ const exported = {
   async getRecentGames(userId) {
     if (!userId) return [];
     // Query games where user is white or black player using Zoho system ID
-    const criteria = `(white_player=="${userId}" || black_player=="${userId}")`;
+    const safeUserId = escapeCriteriaValue(userId);
+    const criteria = `(white_player=="${safeUserId}" || black_player=="${safeUserId}")`;
     const path = buildReportURL(process.env.ZOHO_GAME_REPORT_NAME, criteria);
     try {
       const result = await makeZohoApiRequest(path, 'GET');
@@ -433,7 +479,7 @@ const exported = {
     if (!gameId) return null;
     try {
       // Query game record by system ID using the report endpoint
-      const criteria = `(ID=="${gameId}")`;
+      const criteria = buildNumericIdCriteria(gameId);
       const path = buildReportURL(process.env.ZOHO_GAME_REPORT_NAME, criteria);
       const result = await makeZohoApiRequest(path, 'GET');
       return result?.data?.[0] || null;
