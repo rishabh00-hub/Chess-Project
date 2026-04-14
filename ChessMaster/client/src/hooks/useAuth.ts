@@ -7,14 +7,17 @@ export function useAuth() {
       const response = await fetch("/api/me", {
         credentials: 'include' // Send session cookie with request
       });
+      if (response.status === 401) {
+        return null;
+      }
       if (!response.ok) {
-        throw new Error('Network response was not ok');
+        throw new Error(`Auth request failed with status ${response.status}`);
       }
       return response.json();
     },
-    retry: (failureCount, error) => {
-      // Retry up to 3 times for network errors, but not for auth errors (401)
-      if (error?.message?.includes('Network response was not ok')) {
+    retry: (failureCount, error: any) => {
+      // Retry up to 3 times for actual transport failures only.
+      if (error?.message?.includes('fetch') || error?.message?.includes('network')) {
         return failureCount < 3;
       }
       return false;

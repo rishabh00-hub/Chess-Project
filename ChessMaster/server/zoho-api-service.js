@@ -191,11 +191,11 @@ async function makeZohoApiRequest(urlPath, method = 'GET', body = null) {
     method,
     headers: {
       'Authorization': `Zoho-oauthtoken ${accessToken}`,
-      'Content-Type': 'application/json',
     }
   };
 
   if (body) {
+    options.headers['Content-Type'] = 'application/json';
     options.body = JSON.stringify(body);
   }
 
@@ -333,10 +333,15 @@ const exported = {
       try {
         result = await makeZohoApiRequest(path, 'GET');
       } catch (err) {
-        if (err.message && (err.message.includes('No Data') || err.message.includes('3000'))) {
+        const message = err?.message || '';
+        if (
+          message.includes('No Data') ||
+          message.includes('No records found') ||
+          message.includes('"code":9280')
+        ) {
           console.log("Confirmed: No user found with this email.");
         } else {
-          console.error("Critical API Error during user search:", err.message);
+          console.error("Critical API Error during user search:", message);
           throw new Error("System configuration or API error. Login halted.");
         }
       }

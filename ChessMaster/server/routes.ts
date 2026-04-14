@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { storage } from './storage.js';
 import zohoApi, { makeZohoApiRequest, buildReportURL } from './zoho-api-service.js';
+import { usernameSchema } from '../shared/schema.js';
 
 // Type for Zoho API responses
 interface ZohoApiResponse {
@@ -186,10 +187,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!username || !firstName || !lastName) {
         return res.status(400).json({ message: 'username, firstName, and lastName are required' });
       }
-      const sanitizedUsername = String(username).trim();
-      if (sanitizedUsername.length < 3) {
-        return res.status(400).json({ message: 'Username must be at least 3 characters' });
+      const parsedUsername = usernameSchema.safeParse(String(username));
+      if (!parsedUsername.success) {
+        return res.status(400).json({ message: parsedUsername.error.issues[0]?.message || 'Invalid username format' });
       }
+      const sanitizedUsername = parsedUsername.data;
 
       // STRICT UNIQUE USERNAME CHECK: Multiple verification layers
       console.log(`🔍 Checking username uniqueness: "${sanitizedUsername}"`);
@@ -211,8 +213,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(409).json({ message: 'Username already taken. Please choose a different username.' });
         }
       } catch (searchError: any) {
-        // If search fails with "No Data", that's good (username is available)
-        if (!searchError.message?.includes('No Data') && !searchError.message?.includes('3000')) {
+        const searchMessage = searchError?.message || '';
+        // If search fails with "No Data" or Zoho no-records (9280), username is available.
+        if (
+          !searchMessage.includes('No Data') &&
+          !searchMessage.includes('No records found') &&
+          !searchMessage.includes('"code":9280')
+        ) {
           console.error('Error during username criteria search:', searchError);
           return res.status(500).json({ message: 'Unable to verify username availability' });
         }

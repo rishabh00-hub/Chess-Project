@@ -89,6 +89,14 @@ export interface UserLessonProgress {
 }
 
 // Zod schemas for validation
+export const usernameRegex = /^[a-zA-Z0-9_]+$/;
+export const usernameSchema = z
+  .string()
+  .trim()
+  .min(3, "Username must be at least 3 characters.")
+  .max(32, "Username must be 32 characters or fewer.")
+  .regex(usernameRegex, "Username can only contain letters, numbers, and underscores.");
+
 export const insertGameSchema = z.object({
   whitePlayerId: z.string(),
   blackPlayerId: z.string(),
