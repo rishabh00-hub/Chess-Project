@@ -1,6 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery } from "@tanstack/react-query";
-import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -31,27 +30,25 @@ export default function Home() {
   };
   const { user, isLoading } = useAuth();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
+  const hasShownLoginToast = useRef(false);
 
-  // Handle auth state changes - invalidate queries when user logs in
+  // Fire login-success toast only once, then clean the URL query param.
   useEffect(() => {
-    if (user && !isLoading) {
-      // User is now authenticated - invalidate and refetch all queries
-      queryClient.invalidateQueries();
+    if (!user || isLoading || hasShownLoginToast.current) {
+      return;
+    }
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('login') === 'success') {
+      hasShownLoginToast.current = true;
       toast({
         title: "Welcome back!",
         description: "Successfully logged in to ChessFlow.",
       });
+      url.searchParams.delete('login');
+      const next = `${url.pathname}${url.searchParams.toString() ? `?${url.searchParams.toString()}` : ''}${url.hash}`;
+      window.history.replaceState({}, document.title, next);
     }
-  }, [user, isLoading, queryClient, toast]);
-
-  // Handle login=success redirect (legacy support)
-  useEffect(() => {
-    if (window.location.search.includes('login=success')) {
-      // Clean up URL parameter
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, []);
+  }, [user, isLoading, toast]);
 
   const { data: recentGames = [] } = useQuery({
     queryKey: ["/api/games/user/recent"],

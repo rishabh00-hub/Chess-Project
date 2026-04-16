@@ -12,7 +12,7 @@ interface ZohoApiResponse {
   [key: string]: any;
 }
 
-const aiThinkingGames = new Set<number>();
+const aiThinkingGames = new Set<string>();
 
 // In-memory storage for friend rooms and matchmaking
 const friendRooms = new Map<string, { hostId: string; gameId?: number; guestId?: string; createdAt: number }>();
@@ -59,7 +59,7 @@ function findMatch(userId: string, userElo: number): { opponentId: string } | nu
     const allGames = await storage.getRecentGames('', 1000); // Get many games
     for (const game of allGames) {
       if (game.status === 'ai_thinking') {
-        aiThinkingGames.add(game.id);
+        aiThinkingGames.add(String(game.id));
       }
     }
     console.log(`Initialized ${aiThinkingGames.size} ai_thinking games from storage`);
@@ -311,7 +311,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       
       const game = await storage.createGame(gameData);
-      if (!game) {
+      if (!game || !game.id) {
         return res.status(500).json({ message: "Failed to create game: storage returned null" });
       }
       
@@ -592,7 +592,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Real game operation routes
   app.get('/api/games/:id', async (req: any, res) => {
     try {
-      const gameId = parseInt(req.params.id);
+      const gameId = String(req.params.id);
       const game = await storage.getGame(gameId);
       
       if (!game) {
@@ -611,7 +611,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/games/:id/move', async (req: any, res) => {
     try {
-      const gameId = parseInt(req.params.id);
+      const gameId = String(req.params.id);
       const { from, to, promotion } = req.body;
       
       if (!from || !to) {
@@ -681,7 +681,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/games/:id/resign', async (req: any, res) => {
     try {
-      const gameId = parseInt(req.params.id);
+      const gameId = String(req.params.id);
       const userId = req.session?.userId;
       
       if (!userId) {

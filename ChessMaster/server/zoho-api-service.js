@@ -220,7 +220,17 @@ async function makeZohoApiRequest(urlPath, method = 'GET', body = null) {
   }
 
   const contentType = res.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) return res.json();
+  if (contentType.includes('application/json')) {
+    const payload = await res.json();
+    // Zoho frequently returns HTTP 200 with logical error codes (e.g., 3001).
+    if (payload && typeof payload === 'object' && 'code' in payload && Number(payload.code) !== 3000) {
+      const detail = Array.isArray(payload.error)
+        ? payload.error.join(', ')
+        : payload.message || JSON.stringify(payload);
+      throw new Error(`Zoho API logical error (${payload.code}): ${detail}`);
+    }
+    return payload;
+  }
   return res.text();
 }
 
@@ -239,6 +249,10 @@ function buildReportURL(reportName, criteria = null) {
   return `/report/${reportName}?criteria=${encodeURIComponent(criteria)}`;
 }
 
+function buildReportRecordURL(reportName, systemRecordId) {
+  return `/report/${reportName}/${systemRecordId}`;
+}
+
 function escapeCriteriaValue(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
@@ -248,11 +262,13 @@ function buildStringEqualsCriteria(fieldName, value) {
 }
 
 function buildNumericIdCriteria(idValue) {
-  const numericId = Number(idValue);
-  if (!Number.isFinite(numericId)) {
+  const normalizedId = String(idValue).trim();
+  // Zoho IDs can be 18+ digits and exceed JS safe integer range.
+  // Keep them as digit strings to avoid precision loss in criteria.
+  if (!/^\d+$/.test(normalizedId)) {
     throw new Error(`Invalid numeric ID for Zoho criteria: ${idValue}`);
   }
-  return `(ID==${numericId})`;
+  return `(ID==${normalizedId})`;
 }
 
 // Try to initialize accessToken on module load using stored refresh token.
@@ -309,7 +325,8 @@ const exported = {
       const userInfo = await fetchZohoUserInfo();
       const firstName = userInfo.First_Name || userInfo.first_name || 'Player';
       const lastName = userInfo.Last_Name || userInfo.last_name || 'Chess';
-      const email = userInfo.Email || userInfo.email;
+      const rawEmail = userInfo.Email || userInfo.email;
+      const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : rawEmail;
 
       // STRICT REQUIREMENT: No fake emails allowed
       if (!email || typeof email !== 'string' || !email.includes('@')) {
@@ -325,7 +342,7 @@ const exported = {
         throw new Error('Creator service token unavailable. Please initialize server refresh token first.');
       }
 
-      // 1. Search for existing user by email
+      // 1. Search for existing user by normalized email
       const criteria = buildStringEqualsCriteria('email', email);
       const path = buildReportURL(process.env.ZOHO_USER_REPORT_NAME, criteria);
       
@@ -346,9 +363,25 @@ const exported = {
         }
       }
 
+      // Fallback: in case email case/format mismatch bypasses criteria filtering, scan report data.
+      if (!result || !result.data || result.data.length === 0) {
+        try {
+          const allUsersPath = buildReportURL(process.env.ZOHO_USER_REPORT_NAME);
+          const allUsers = await makeZohoApiRequest(allUsersPath, 'GET');
+          const existingByEmail = allUsers?.data?.find(
+            (row) => typeof row?.email === 'string' && row.email.trim().toLowerCase() === email
+          );
+          if (existingByEmail) {
+            return { success: true, isNew: false, userId: existingByEmail.ID || existingByEmail.id };
+          }
+        } catch (fallbackError) {
+          console.warn('Existing-user fallback email scan failed:', fallbackError?.message || fallbackError);
+        }
+      }
+
       // 2. Return existing user ID if found
       if (result && result.data && result.data.length > 0) {
-        return { success: true, userId: result.data[0].ID };
+        return { success: true, isNew: false, userId: result.data[0].ID || result.data[0].id };
       }
 
       // 3. No existing user found: return pending onboarding profile data
@@ -419,7 +452,7 @@ const exported = {
 
   async updateUserProfile(systemRecordId, profileData) {
     if (!systemRecordId) throw new Error("System Record ID is required for PATCH");
-    const path = buildFormURL(process.env.ZOHO_USER_FORM_NAME, systemRecordId);
+    const path = buildReportRecordURL(process.env.ZOHO_USER_REPORT_NAME, systemRecordId);
     return await makeZohoApiRequest(path, 'PATCH', { data: profileData });
   },
 
@@ -450,10 +483,11 @@ const exported = {
       const formattedDate = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
       
       const statusMap = {
-        'active': 'Active',
-        'waiting': 'Active',
+        'active': 'Ongoing',
+        'waiting': 'Ongoing',
         'completed': 'Completed',
-        'draw': 'Draw'
+        'draw': 'Draw',
+        'ai_thinking': 'Ongoing'
       };
       const resultMap = {
         'white_wins': 'Win',
@@ -462,10 +496,10 @@ const exported = {
       };
       
       const mappedGameData = {
-        white_player: String(gameData.whitePlayerId || ''),
-        black_player: String(gameData.blackPlayerId || ''),
+        white_player: gameData.whitePlayerId ? [String(gameData.whitePlayerId)] : [],
+        black_player: gameData.blackPlayerId ? [String(gameData.blackPlayerId)] : [],
         match_date: formattedDate,
-        match_result: resultMap[gameData.result] || 'Ongoing',
+        match_result: resultMap[gameData.result] || '',
         opening_used: String(gameData.openingUsed || ''),
         moves_played: JSON.stringify(gameData.moves || []),
         time_control: String(gameData.timeControl || ''),
@@ -477,7 +511,14 @@ const exported = {
         ai_thinking: gameData.status === 'ai_thinking' ? true : false
       };
       
-      return await makeZohoApiRequest(path, 'POST', { data: mappedGameData });
+      const result = await makeZohoApiRequest(path, 'POST', { data: mappedGameData });
+      const createdId = result?.data?.ID || result?.data?.id || result?.data?.[0]?.ID || result?.data?.[0]?.id;
+      if (!createdId) {
+        const zohoError = result?.error?.join?.(', ') || result?.message || JSON.stringify(result);
+        throw new Error(`Zoho game creation failed: ${zohoError}`);
+      }
+
+      return result;
     },
 
   async getGame(gameId) {
@@ -497,8 +538,12 @@ const exported = {
   async updateGameRecord(gameId, updates) {
     if (!gameId) throw new Error('gameId is required for PATCH');
     try {
-      const path = buildFormURL(process.env.ZOHO_GAME_FORM_NAME, gameId);
-      return await makeZohoApiRequest(path, 'PATCH', { data: updates });
+      const path = buildReportRecordURL(process.env.ZOHO_GAME_REPORT_NAME, gameId);
+      const normalizedUpdates = { ...updates };
+      if (normalizedUpdates.winner1 && typeof normalizedUpdates.winner1 === 'object') {
+        normalizedUpdates.winner1 = normalizedUpdates.winner1.ID || normalizedUpdates.winner1.id || '';
+      }
+      return await makeZohoApiRequest(path, 'PATCH', { data: normalizedUpdates });
     } catch (error) {
       console.error(`Error updating game ${gameId}:`, error);
       throw error;

@@ -80,8 +80,13 @@ export default function Play() {
                                 },
                                     onSuccess: (data: any) => {
                                               setIsMatchmaking(false);
-                                                    toast({ title: "Game Created!", description: "Starting your match..." });
-                                                          setLocation(`/game/${data.id || data.ID}`);
+                                                                                                                                          const gameId = data?.id || data?.ID;
+                                                                                                                                          if (!gameId) {
+                                                                                                                                                toast({ title: "Error", description: "Game creation failed. Please try again.", variant: "destructive" });
+                                                                                                                                                return;
+                                                                                                                                          }
+                                                                                                                                          toast({ title: "Game Created!", description: "Starting your match..." });
+                                                                                                                                          setLocation(`/game/${gameId}`);
                                     },
                                         onError: () => {
                                                   setIsMatchmaking(false);

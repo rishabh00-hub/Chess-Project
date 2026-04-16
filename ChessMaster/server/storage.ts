@@ -16,18 +16,32 @@ interface ZohoApiResponse {
 }
 
 class Storage implements IStorage {
+  private extractZohoId(value: any): string {
+    if (typeof value === 'string' || typeof value === 'number') {
+      return String(value);
+    }
+    if (Array.isArray(value)) {
+      const first = value[0];
+      return this.extractZohoId(first);
+    }
+    if (value && typeof value === 'object') {
+      return String(value.ID || value.id || value.zuid || value.zc_display_value || value.username || '');
+    }
+    return '';
+  }
+
   // Helper to map app status to Zoho dropdown
   private mapAppStatusToZoho(status: string): string {
     const map: { [key: string]: string } = {
-      'active': 'Active',
+      'active': 'Ongoing',
       'completed': 'Completed',
       'draw': 'Draw',
       'abandoned': 'Completed',
       'resigned': 'Completed',
       'timeout': 'Completed',
-      'ai_thinking': 'Active'
+      'ai_thinking': 'Ongoing'
     };
-    return map[status] || 'Active';
+    return map[status] || 'Ongoing';
   }
 
   // Helper to map app result to Zoho dropdown
@@ -83,17 +97,21 @@ class Storage implements IStorage {
 
     // 6. Map result based on match_result and winner
     let result: 'white_wins' | 'black_wins' | 'draw' | undefined;
+    const whitePlayerId = this.extractZohoId(record.white_player);
+    const blackPlayerId = this.extractZohoId(record.black_player);
+    const winnerId = this.extractZohoId(record.winner1);
+
     if (record.match_result === 'Draw') {
       result = 'draw';
-    } else if (record.winner1) {
-      result = record.winner1 === record.white_player ? 'white_wins' : 'black_wins';
+    } else if (winnerId) {
+      result = winnerId === whitePlayerId ? 'white_wins' : 'black_wins';
     }
 
     // 4. Return properly mapped Game object
     return {
       id: record.ID,
-      whitePlayerId: record.white_player || '',
-      blackPlayerId: record.black_player || '',
+      whitePlayerId,
+      blackPlayerId,
       gameMode: String(record.gameMode || record.game_mode || 'ai') as 'ai' | 'friend' | 'online',
       status,
       result,
@@ -103,7 +121,7 @@ class Storage implements IStorage {
       moveHistory: record.moves_played || '',
       halfMoveClock: 0,
       fullMoveNumber: 1,
-      winnerId: record.winner1 || undefined,
+      winnerId: winnerId || undefined,
       aiDifficulty,
       pointsAwarded: 0,
       createdAt: record.match_date ? new Date(record.match_date) : new Date(),
@@ -183,17 +201,32 @@ class Storage implements IStorage {
   // Game operations
   async createGame(game: InsertGame): Promise<Game> {
     const result = await zohoApi.createGameRecord(game) as ZohoApiResponse;
-    // Handle both direct data and wrapped response
-    return this.mapZohoGameToAppGame(result);
+    const createdId =
+      (result as any)?.data?.ID ||
+      (result as any)?.data?.id ||
+      (result as any)?.data?.[0]?.ID ||
+      (result as any)?.data?.[0]?.id;
+    if (!createdId) {
+      console.error('ZOHO GAME INSERT ERROR (no ID in response):', result);
+      throw new Error('Failed to create game in Zoho DB');
+    }
+
+    const created = await this.getGame(String(createdId));
+    if (!created) {
+      console.error('ZOHO GAME INSERT ERROR (created game could not be fetched):', result);
+      throw new Error('Game was created but could not be retrieved');
+    }
+
+    return created;
   }
 
-  async getGame(id: number): Promise<Game | undefined> {
+  async getGame(id: string): Promise<Game | undefined> {
     try {
-      if (!id || id <= 0) {
+      if (!id) {
         console.warn(`getGame called with invalid id: ${id}`);
         return undefined;
       }
-      const data = await zohoApi.getGame(id.toString());
+      const data = await zohoApi.getGame(String(id));
       if (!data) {
         console.warn(`Game not found in Zoho: ${id}`);
         return undefined;
@@ -205,7 +238,7 @@ class Storage implements IStorage {
     }
   }
 
-  async updateGame(id: number, updates: Partial<Game>): Promise<Game> {
+  async updateGame(id: string, updates: Partial<Game>): Promise<Game> {
     const game = await this.getGame(id);
     if (!game) throw new Error('Game not found');
     const zohoUpdates: any = {};
@@ -223,7 +256,7 @@ class Storage implements IStorage {
       }
     }
     if (updates.winnerId) zohoUpdates.winner1 = updates.winnerId;
-    const result = await zohoApi.updateGameRecord(id.toString(), zohoUpdates) as ZohoApiResponse;
+    const result = await zohoApi.updateGameRecord(String(id), zohoUpdates) as ZohoApiResponse;
     // Handle both direct data and wrapped response
     const gameData = (result as any).data?.[0] || (result as any).data || result;
     return this.mapZohoGameToAppGame(gameData || game);
@@ -238,7 +271,7 @@ class Storage implements IStorage {
     return data.map(this.mapZohoGameToAppGame.bind(this)).slice(0, limit || 10);
   }
 
-  async makeMove(gameId: number, move: { from: string; to: string; promotion?: string }): Promise<Game> {
+  async makeMove(gameId: string, move: { from: string; to: string; promotion?: string }): Promise<Game> {
     const game = await this.getGame(gameId);
     if (!game) throw new Error('Game not found');
     const engine = new ChessEngine(game.currentPosition);
@@ -266,7 +299,7 @@ class Storage implements IStorage {
       match_result: gameResult === 'draw' ? 'Draw' : gameResult ? 'Win' : 'Ongoing',
       winner1: winnerId
     };
-    const result = await zohoApi.updateGameRecord(gameId.toString(), updateData) as ZohoApiResponse;
+    const result = await zohoApi.updateGameRecord(String(gameId), updateData) as ZohoApiResponse;
     const updatedGame = this.mapZohoGameToAppGame((result as any).data?.[0] || (result as any).data || result) || game;
 
     // Update Elo ratings if game has ended
@@ -282,7 +315,7 @@ class Storage implements IStorage {
     return updatedGame;
   }
 
-  async resignGame(gameId: number, userId: string): Promise<Game> {
+  async resignGame(gameId: string, userId: string): Promise<Game> {
     const game = await this.getGame(gameId);
     if (!game) throw new Error('Game not found');
     const winnerId = game.whitePlayerId === userId ? game.blackPlayerId : game.whitePlayerId;
@@ -303,7 +336,7 @@ class Storage implements IStorage {
     return updatedGame;
   }
 
-  async completeGame(gameId: number, result: string, winnerId?: string | null): Promise<Game> {
+  async completeGame(gameId: string, result: string, winnerId?: string | null): Promise<Game> {
     const statusMap: { [key: string]: 'active' | 'completed' | 'abandoned' | 'draw' | 'resigned' | 'timeout' | 'ai_thinking' } = {
       'completed': 'completed',
       'abandoned': 'abandoned',
@@ -321,7 +354,7 @@ class Storage implements IStorage {
     return Math.round(32 * (actualScore - expectedScore));
   }
 
-  async updateRatingsAfterGame(gameId: number, result: 'white_wins' | 'black_wins' | 'draw'): Promise<void> {
+  async updateRatingsAfterGame(gameId: string, result: 'white_wins' | 'black_wins' | 'draw'): Promise<void> {
     const game = await this.getGame(gameId);
     if (!game) throw new Error('Game not found');
 
@@ -452,14 +485,14 @@ export interface IStorage {
   
   // Game operations
   createGame(game: InsertGame): Promise<Game>;
-  getGame(id: number): Promise<Game | undefined>;
-  updateGame(id: number, updates: Partial<Game>): Promise<Game>;
+  getGame(id: string): Promise<Game | undefined>;
+  updateGame(id: string, updates: Partial<Game>): Promise<Game>;
   getUserGames(userId: string, limit?: number): Promise<Game[]>;
   getRecentGames(userId: string, limit?: number): Promise<Game[]>;
-  makeMove(gameId: number, move: { from: string; to: string; promotion?: string }): Promise<Game>;
-  resignGame(gameId: number, userId: string): Promise<Game>;
-  completeGame(gameId: number, result: string, winnerId?: string | null): Promise<Game>;
-  updateRatingsAfterGame(gameId: number, result: 'white_wins' | 'black_wins' | 'draw'): Promise<void>;
+  makeMove(gameId: string, move: { from: string; to: string; promotion?: string }): Promise<Game>;
+  resignGame(gameId: string, userId: string): Promise<Game>;
+  completeGame(gameId: string, result: string, winnerId?: string | null): Promise<Game>;
+  updateRatingsAfterGame(gameId: string, result: 'white_wins' | 'black_wins' | 'draw'): Promise<void>;
   
   // Leaderboard operations
   getLeaderboard(limit?: number): Promise<User[]>;
