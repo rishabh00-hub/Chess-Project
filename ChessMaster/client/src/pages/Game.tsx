@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { ArrowLeft, Flag, Users, Trophy } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import type { Game as GameType } from "@shared/schema";
+import { useGameSocket } from "@/hooks/useGameSocket";
 
 export default function Game() {
   const [, params] = useRoute("/game/:id");
@@ -14,33 +15,32 @@ export default function Game() {
   const { user } = useAuth();
   const gameId = params?.id ? parseInt(params.id) : null;
 
+  useGameSocket(gameId, (updatedGame) => {
+    queryClient.setQueryData(['/api/games', gameId], updatedGame as GameType);
+  });
+
   const { data: game, isLoading, error } = useQuery<GameType>({
     queryKey: ['/api/games', gameId],
     enabled: !!gameId,
-    refetchInterval: (query) => {
-      const game = query.state.data;
-      if (game?.status === 'active' && game?.currentTurn === 'black' && game?.blackPlayerId === 'ai') {
-        return 1000;
-      }
-      return game?.status === 'active' ? 3000 : false;
-    }
   });
 
   const moveMutation = useMutation({
     mutationFn: async (move: { from: string; to: string; promotion?: string }) => {
-      return apiRequest('POST', `/api/games/${gameId}/move`, move);
+      const response = await apiRequest('POST', `/api/games/${gameId}/move`, move);
+      return await response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/games', gameId] });
+    onSuccess: (updatedGame: GameType) => {
+      queryClient.setQueryData(['/api/games', gameId], updatedGame);
     }
   });
 
   const resignMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest('POST', `/api/games/${gameId}/resign`, {});
+      const response = await apiRequest('POST', `/api/games/${gameId}/resign`, {});
+      return await response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/games', gameId] });
+    onSuccess: (updatedGame: GameType) => {
+      queryClient.setQueryData(['/api/games', gameId], updatedGame);
     }
   });
 

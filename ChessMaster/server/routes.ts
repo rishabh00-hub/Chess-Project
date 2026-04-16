@@ -5,6 +5,7 @@ import type { Server } from 'node:http';
 import { storage } from './storage.js';
 import zohoApi, { makeZohoApiRequest, buildReportURL } from './zoho-api-service.js';
 import { usernameSchema } from '../shared/schema.js';
+import { createRealtimeServer } from './realtime.js';
 
 // Type for Zoho API responses
 interface ZohoApiResponse {
@@ -69,6 +70,9 @@ function findMatch(userId: string, userElo: number): { opponentId: string } | nu
 })();
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  const httpServer = createServer(app);
+  const realtime = createRealtimeServer(httpServer);
+
   // Temporarily disable auth for UI demonstration
   // await setupAuth(app);
 
@@ -314,6 +318,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!game || !game.id) {
         return res.status(500).json({ message: "Failed to create game: storage returned null" });
       }
+
+      realtime.broadcastGameUpdate(game);
       
       res.json(game);
     } catch (error: any) {
@@ -407,6 +413,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ message: 'Failed to create game' });
       }
 
+      realtime.broadcastGameUpdate(game);
+
       // Update room
       room.guestId = userId;
       room.gameId = game.id;
@@ -471,6 +479,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const game = await storage.createGame(gameData);
         if (game) {
           console.log(`Match found: ${userId} vs ${match.opponentId}, game ${game.id} created`);
+          realtime.broadcastGameUpdate(game);
           return res.json({ gameId: game.id, opponentId: match.opponentId });
         }
       }
@@ -627,6 +636,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const game = await storage.makeMove(gameId, { from, to, promotion });
+      realtime.broadcastGameUpdate(game);
 
       if (game.gameMode === 'ai' && game.blackPlayerId === 'ai' && game.currentTurn === 'black' && game.status === 'active') {
         aiThinkingGames.add(gameId);
@@ -638,7 +648,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             : 1200;
 
         // Persist the ai_thinking status
-        await storage.updateGame(gameId, { status: 'ai_thinking' });
+        const thinkingGame = await storage.updateGame(gameId, { status: 'ai_thinking' });
+        realtime.broadcastGameUpdate(thinkingGame);
 
         setTimeout(async () => {
           try {
@@ -648,11 +659,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const engine = new ChessEngine(latestGame.currentPosition || undefined);
             const aiMove = engine.getAIMove(difficulty);
             if (!aiMove) return;
-            await storage.makeMove(gameId, {
+            const updatedGame = await storage.makeMove(gameId, {
               from: aiMove.from,
               to: aiMove.to,
               promotion: aiMove.promotion
             });
+            realtime.broadcastGameUpdate(updatedGame);
           } catch (aiError) {
             console.error('AI background move error:', aiError);
           } finally {
@@ -661,7 +673,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             try {
               const finalGame = await storage.getGame(gameId);
               if (finalGame && finalGame.status === 'ai_thinking') {
-                await storage.updateGame(gameId, { status: 'active' });
+                const restoredGame = await storage.updateGame(gameId, { status: 'active' });
+                realtime.broadcastGameUpdate(restoredGame);
               }
             } catch (clearError) {
               console.error('Failed to clear ai_thinking status:', clearError);
@@ -689,6 +702,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const game = await storage.resignGame(gameId, userId);
+      realtime.broadcastGameUpdate(game);
       res.json(game);
     } catch (error: any) {
       console.error("Error resigning game:", error);
@@ -778,6 +792,5 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  const httpServer = createServer(app);
   return httpServer;
 }

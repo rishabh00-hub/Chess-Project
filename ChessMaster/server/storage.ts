@@ -348,10 +348,22 @@ class Storage implements IStorage {
     return this.updateGame(gameId, { status, winnerId: winnerId || undefined });
   }
 
+  private getKFactor(player: Pick<User, 'elo' | 'gamesPlayed'>): number {
+    if (player.gamesPlayed < 30) {
+      return 40;
+    }
+
+    if (player.elo < 2400) {
+      return 20;
+    }
+
+    return 10;
+  }
+
   // Elo rating system implementation
-  private calculateEloChange(currentRating: number, opponentRating: number, actualScore: number): number {
+  private calculateEloChange(currentRating: number, opponentRating: number, actualScore: number, kFactor: number): number {
     const expectedScore = 1 / (1 + Math.pow(10, (opponentRating - currentRating) / 400));
-    return Math.round(32 * (actualScore - expectedScore));
+    return Math.round(kFactor * (actualScore - expectedScore));
   }
 
   async updateRatingsAfterGame(gameId: string, result: 'white_wins' | 'black_wins' | 'draw'): Promise<void> {
@@ -377,8 +389,10 @@ class Storage implements IStorage {
       blackScore = 0.5;
     }
 
-    const whiteEloChange = this.calculateEloChange(whitePlayer.elo, blackPlayer.elo, whiteScore);
-    const blackEloChange = this.calculateEloChange(blackPlayer.elo, whitePlayer.elo, blackScore);
+    const whiteKFactor = this.getKFactor(whitePlayer);
+    const blackKFactor = this.getKFactor(blackPlayer);
+    const whiteEloChange = this.calculateEloChange(whitePlayer.elo, blackPlayer.elo, whiteScore, whiteKFactor);
+    const blackEloChange = this.calculateEloChange(blackPlayer.elo, whitePlayer.elo, blackScore, blackKFactor);
 
     // Update player stats and Elo
     const whiteUpdates: Partial<User> = {
