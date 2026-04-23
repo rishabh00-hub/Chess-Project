@@ -62,9 +62,8 @@ export default function ChessBoard({
 
     if (selectedSquare) {
       if (legalMoves.includes(squareId)) {
-        const [fromRow, fromCol] = selectedSquare.split('').map((c, i) => 
-          i === 0 ? c.charCodeAt(0) - 'a'.charCodeAt(0) : 8 - parseInt(c)
-        );
+        const fromCol = selectedSquare.charCodeAt(0) - 'a'.charCodeAt(0);
+        const fromRow = 8 - parseInt(selectedSquare[1], 10);
         const movingPiece = board[fromRow][fromCol];
         
         const isPromotion = movingPiece?.toLowerCase() === 'p' && 
@@ -200,11 +199,14 @@ export default function ChessBoard({
                   <span 
                     data-testid={`piece-${square}`}
                     className={`
-                      ${piece === piece.toUpperCase() ? 'text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]' : 'text-black drop-shadow-[0_1px_1px_rgba(255,255,255,0.5)]'}
                       font-bold
                       ${interactive && !disabled ? 'select-none' : ''}
                       z-10 relative
                     `}
+                    style={piece === piece.toUpperCase()
+                      ? { color: '#ffffff', textShadow: '0 0 3px #000, 0 0 3px #000, 1px 1px 2px #000' }
+                      : { color: '#1a1a1a', textShadow: '0 0 3px #fff, 0 0 3px #fff, 1px 1px 2px rgba(255,255,255,0.8)' }
+                    }
                   >
                     {pieceSymbols[piece]}
                   </span>

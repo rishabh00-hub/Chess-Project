@@ -658,7 +658,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const { ChessEngine } = await import('../shared/chessEngine.js');
             const engine = new ChessEngine(latestGame.currentPosition || undefined);
             const aiMove = engine.getAIMove(difficulty);
-            if (!aiMove) return;
+            if (!aiMove) {
+              console.warn(`AI found no legal moves for game ${gameId} – game may already be over`);
+              return;
+            }
             const updatedGame = await storage.makeMove(gameId, {
               from: aiMove.from,
               to: aiMove.to,
@@ -669,12 +672,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error('AI background move error:', aiError);
           } finally {
             aiThinkingGames.delete(gameId);
-            // Clear the persisted ai_thinking status
+            // Always attempt to clear the persisted ai_thinking status
             try {
               const finalGame = await storage.getGame(gameId);
-              if (finalGame && finalGame.status === 'ai_thinking') {
-                const restoredGame = await storage.updateGame(gameId, { status: 'active' });
-                realtime.broadcastGameUpdate(restoredGame);
+              if (finalGame && (finalGame.status === 'ai_thinking' || (finalGame as any).status === 'active')) {
+                if (finalGame.status === 'ai_thinking') {
+                  const restoredGame = await storage.updateGame(gameId, { status: 'active' });
+                  realtime.broadcastGameUpdate(restoredGame);
+                } else {
+                  realtime.broadcastGameUpdate(finalGame);
+                }
               }
             } catch (clearError) {
               console.error('Failed to clear ai_thinking status:', clearError);

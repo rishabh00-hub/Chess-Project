@@ -6,8 +6,70 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft, Flag, Users, Trophy } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import type { Game as GameType } from "@shared/schema";
+import type { Game as GameType, User } from "@shared/schema";
 import { useGameSocket } from "@/hooks/useGameSocket";
+
+// Helper: build a displayable name from a User record
+function getDisplayName(player: User | null | undefined, playerId: string, color: string): string {
+  if (playerId === 'ai') return 'AI Opponent';
+  if (!player) return `${color.charAt(0).toUpperCase() + color.slice(1)} Player`;
+  const full = [player.firstName, player.lastName].filter(Boolean).join(' ');
+  return full || player.username || `${color.charAt(0).toUpperCase() + color.slice(1)} Player`;
+}
+
+// Player profile row shown above/below the board
+interface PlayerProfileProps {
+  player: User | null | undefined;
+  playerId: string;
+  color: 'white' | 'black';
+  aiDifficulty?: number | null;
+  isActive: boolean;   // it is this player's turn
+  isUser: boolean;     // this is the logged-in user
+  isThinking?: boolean;
+}
+
+function PlayerProfile({ player, playerId, color, aiDifficulty, isActive, isUser, isThinking }: PlayerProfileProps) {
+  const elo = playerId === 'ai'
+    ? (aiDifficulty ?? 1200)
+    : (player?.elo ?? null);
+
+  return (
+    <div
+      data-testid={`player-info-${color}`}
+      className={`flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-300 ${
+        isActive
+          ? 'ring-2 ring-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.45)] bg-slate-700/60'
+          : 'bg-slate-700/30'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${
+            color === 'white' ? 'bg-slate-200' : 'bg-slate-950'
+          }`}
+        >
+          {color === 'white' ? '⚪' : '⚫'}
+        </div>
+        <div>
+          <div className="flex items-center gap-2 font-medium text-sm text-white">
+            {getDisplayName(player, playerId, color)}
+            {isUser && <span className="text-xs text-slate-400">(You)</span>}
+            {isActive && (
+              <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            )}
+          </div>
+          <div className="text-xs text-slate-400">
+            {elo !== null ? `Elo: ${elo}` : ''}
+            {playerId === 'ai' && aiDifficulty ? ` · Difficulty ${aiDifficulty}` : ''}
+          </div>
+        </div>
+      </div>
+      {isThinking && (
+        <div className="text-xs text-amber-400 animate-pulse pr-1">Thinking…</div>
+      )}
+    </div>
+  );
+}
 
 export default function Game() {
   const [, params] = useRoute("/game/:id");
@@ -22,6 +84,28 @@ export default function Game() {
   const { data: game, isLoading, error } = useQuery<GameType>({
     queryKey: ['/api/games', gameId],
     enabled: !!gameId,
+  });
+
+  // Fetch white player profile (skip for AI)
+  const { data: whitePlayer } = useQuery<User | null>({
+    queryKey: ['/api/user', game?.whitePlayerId],
+    queryFn: async () => {
+      const res = await fetch(`/api/user?userId=${game!.whitePlayerId}`, { credentials: 'include' });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!game?.whitePlayerId && game.whitePlayerId !== 'ai',
+  });
+
+  // Fetch black player profile (skip for AI)
+  const { data: blackPlayer } = useQuery<User | null>({
+    queryKey: ['/api/user', game?.blackPlayerId],
+    queryFn: async () => {
+      const res = await fetch(`/api/user?userId=${game!.blackPlayerId}`, { credentials: 'include' });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!game?.blackPlayerId && game.blackPlayerId !== 'ai',
   });
 
   const moveMutation = useMutation({
@@ -101,6 +185,18 @@ export default function Game() {
   const isPlayerTurn = user && ((game.whitePlayerId === user.id && game.currentTurn === 'white') || (game.blackPlayerId === user.id && game.currentTurn === 'black'));
   const playerColor = user && game.whitePlayerId === user.id ? 'white' : user && game.blackPlayerId === user.id ? 'black' : null;
   const isGameOver = game.status === 'completed';
+
+  // Determine which side is the local user and which is the opponent
+  const opponentColor: 'white' | 'black' = playerColor === 'white' ? 'black' : 'white';
+  const opponentPlayerId = opponentColor === 'white' ? game.whitePlayerId : game.blackPlayerId;
+  const userPlayerId = playerColor === 'white' ? game.whitePlayerId : game.blackPlayerId;
+  const opponentPlayer = opponentColor === 'white' ? whitePlayer : blackPlayer;
+  const userPlayerProfile = playerColor === 'white' ? whitePlayer : blackPlayer;
+
+  const isOpponentTurn = game.currentTurn === opponentColor;
+  const isUserTurn = game.currentTurn === playerColor;
+  const isAIThinking = game.status === 'ai_thinking' || moveMutation.isPending;
+
   const getResultMessage = () => {
     if (!isGameOver) return null;
     if (game.result === 'white_wins') return '⚪ White wins!';
@@ -150,27 +246,17 @@ export default function Game() {
           </Card>
         )}
 
-        <Card className="p-6 bg-slate-800 border-slate-700 mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex items-center gap-3" data-testid="player-info-black">
-              <div className="w-10 h-10 rounded-full bg-slate-950 flex items-center justify-center text-xl">
-                ⚫
-              </div>
-              <div>
-                <div className="font-medium">
-                  {game.blackPlayerId === 'ai' ? 'AI Opponent' : 'Black Player'}
-                </div>
-                <div className="text-xs text-slate-400">
-                  {game.gameMode === 'ai' && game.aiDifficulty && `Difficulty: ${game.aiDifficulty}`}
-                </div>
-              </div>
-            </div>
-            {moveMutation.isPending && game.currentTurn === 'black' && (
-              <div className="text-sm text-amber-400 animate-pulse">
-                Thinking...
-              </div>
-            )}
-          </div>
+        <Card className="p-4 bg-slate-800 border-slate-700 mb-6 flex flex-col gap-3">
+          {/* Opponent profile – above the board */}
+          <PlayerProfile
+            player={opponentPlayer}
+            playerId={opponentPlayerId}
+            color={opponentColor}
+            aiDifficulty={game.aiDifficulty}
+            isActive={isOpponentTurn && !isGameOver}
+            isUser={false}
+            isThinking={isOpponentTurn && isAIThinking}
+          />
 
           <ChessBoard
             size="large"
@@ -183,48 +269,15 @@ export default function Game() {
             showStatus={true}
           />
 
-          <div className="flex justify-between items-center mt-4">
-            <div className="flex items-center gap-3" data-testid="player-info-white">
-              <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-xl">
-                ⚪
-              </div>
-              <div>
-                <div className="font-medium">
-                  {playerColor === 'white' ? 'You' : game.whitePlayerId === 'ai' ? 'AI' : 'Opponent'} (White)
-                </div>
-                <div className="text-xs text-slate-400">
-                  {playerColor === 'white' && isPlayerTurn && !isGameOver ? 'Your turn' : ''}
-                </div>
-              </div>
-            </div>
-            {moveMutation.isPending && game.currentTurn === 'white' && playerColor === 'white' && (
-              <div className="text-sm text-amber-400 animate-pulse">
-                Making move...
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-between items-center mt-4">
-            <div className="flex items-center gap-3" data-testid="player-info-black">
-              <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-xl">
-                ⚫
-              </div>
-              <div>
-                <div className="font-medium">
-                  {playerColor === 'black' ? 'You' : game.blackPlayerId === 'ai' ? 'AI' : 'Opponent'} (Black)
-                </div>
-                <div className="text-xs text-slate-400">
-                  {playerColor === 'black' && isPlayerTurn && !isGameOver ? 'Your turn' : ''}
-                  {game.status === 'ai_thinking' && game.currentTurn === 'black' ? 'AI is thinking...' : ''}
-                </div>
-              </div>
-            </div>
-            {moveMutation.isPending && game.currentTurn === 'black' && playerColor === 'black' && (
-              <div className="text-sm text-amber-400 animate-pulse">
-                Making move...
-              </div>
-            )}
-          </div>
+          {/* User profile – below the board */}
+          <PlayerProfile
+            player={userPlayerProfile ?? (user as User | null | undefined)}
+            playerId={userPlayerId ?? (user?.id ?? '')}
+            color={playerColor ?? 'white'}
+            isActive={!!isUserTurn && !isGameOver}
+            isUser={true}
+            isThinking={!!isUserTurn && moveMutation.isPending}
+          />
         </Card>
 
         <div className="flex gap-3">

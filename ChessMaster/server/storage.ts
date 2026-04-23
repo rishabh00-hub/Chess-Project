@@ -257,9 +257,21 @@ class Storage implements IStorage {
     }
     if (updates.winnerId) zohoUpdates.winner1 = updates.winnerId;
     const result = await zohoApi.updateGameRecord(String(id), zohoUpdates) as ZohoApiResponse;
-    // Handle both direct data and wrapped response
+    // Zoho's update response only contains a partial record; fetch the full
+    // game fresh to avoid mapZohoGameToAppGame throwing on missing fields.
+    try {
+      const fresh = await this.getGame(id);
+      if (fresh) return fresh;
+    } catch (fetchErr) {
+      console.error('Failed to fetch game after updateGame, falling back to merge:', fetchErr);
+    }
+    // Fallback: merge the known updates onto the pre-update snapshot
     const gameData = (result as any).data?.[0] || (result as any).data || result;
-    return this.mapZohoGameToAppGame(gameData || game);
+    try {
+      return this.mapZohoGameToAppGame(gameData);
+    } catch {
+      return { ...game, ...updates } as Game;
+    }
   }
 
   async getUserGames(userId: string, limit?: number): Promise<Game[]> {
@@ -299,17 +311,29 @@ class Storage implements IStorage {
       match_result: gameResult === 'draw' ? 'Draw' : gameResult ? 'Win' : 'Ongoing',
       winner1: winnerId
     };
-    const result = await zohoApi.updateGameRecord(String(gameId), updateData) as ZohoApiResponse;
-    const updatedGame = this.mapZohoGameToAppGame((result as any).data?.[0] || (result as any).data || result) || game;
+    await zohoApi.updateGameRecord(String(gameId), updateData);
 
-    // Update Elo ratings if game has ended
-    if (gameResult && game.gameMode !== 'ai') { // Only update for non-AI games
-      try {
-        await this.updateRatingsAfterGame(gameId, gameResult);
-      } catch (error) {
-        console.error('Failed to update ratings:', error);
-        // Don't fail the move if rating update fails
-      }
+    // Build the updated game object from locally computed values to avoid
+    // depending on the Zoho update-response format, which only returns a
+    // partial record and can cause mapZohoGameToAppGame to throw.
+    const updatedGame: Game = {
+      ...game,
+      currentPosition: newFen,
+      currentTurn: engine.getTurn(),
+      moves: newMoves,
+      moveHistory: newMoves.map((m: any) => `${m.from ?? ''}${m.to ?? ''}`).join(' '),
+      status,
+      result: gameResult,
+      winnerId,
+      halfMoveClock: parseInt(newFen.split(' ')[4] || '0', 10),
+      fullMoveNumber: parseInt(newFen.split(' ')[5] || '1', 10),
+    };
+
+    // Update Elo ratings if game has ended (non-blocking – don't fail the move)
+    if (gameResult && game.gameMode !== 'ai') {
+      this.updateRatingsAfterGame(gameId, gameResult).catch((error) =>
+        console.error('Failed to update ratings:', error)
+      );
     }
 
     return updatedGame;
