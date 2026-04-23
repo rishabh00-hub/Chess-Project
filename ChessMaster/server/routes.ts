@@ -675,7 +675,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Always attempt to clear the persisted ai_thinking status
             try {
               const finalGame = await storage.getGame(gameId);
-              if (finalGame && (finalGame.status === 'ai_thinking' || (finalGame as any).status === 'active')) {
+              if (finalGame) {
                 if (finalGame.status === 'ai_thinking') {
                   const restoredGame = await storage.updateGame(gameId, { status: 'active' });
                   realtime.broadcastGameUpdate(restoredGame);

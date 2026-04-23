@@ -269,7 +269,9 @@ export default function Game() {
             showStatus={true}
           />
 
-          {/* User profile – below the board */}
+          {/* User profile – below the board.
+               userPlayerProfile is fetched from /api/user; fall back to the
+               auth user object while that query is still loading. */}
           <PlayerProfile
             player={userPlayerProfile ?? (user as User | null | undefined)}
             playerId={userPlayerId ?? (user?.id ?? '')}

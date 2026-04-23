@@ -269,7 +269,8 @@ class Storage implements IStorage {
     const gameData = (result as any).data?.[0] || (result as any).data || result;
     try {
       return this.mapZohoGameToAppGame(gameData);
-    } catch {
+    } catch (mapErr) {
+      console.error('mapZohoGameToAppGame failed in updateGame fallback:', mapErr);
       return { ...game, ...updates } as Game;
     }
   }
